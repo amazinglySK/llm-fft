@@ -110,6 +110,7 @@ args = parser.parse_args()
 args.use_gpu = True if torch.cuda.is_available() and args.use_gpu else False
 
 if args.cut_freq == 0:
+    # TODO: Cutoff frequency calculation
     args.cut_freq = int(args.seq_len // args.base_T + 1) * args.H_order + 10
 
 fix_seed = args.seed

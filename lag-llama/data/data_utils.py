@@ -43,6 +43,7 @@ from data.read_new_dataset import (
     TrainDatasets,
     MetaData,
 )
+from data.filter_processor import FilterProcessor
 
 
 class CombinedDatasetIterator:
@@ -142,6 +143,9 @@ def freq_dropout(x, y=None, dropout_rate=0.2, dim=0, keep_dominant=True):
     """
     Applies frequency dropout to the input time series x.
     If y is None, uses zeros of the same shape as x.
+    
+    Modified to optionally preserve dominant frequencies similar to FITS approach.
+    NOTE: This function is preserved for backward compatibility but new code should use FilterProcessor.
     """
     x = np.asarray(x)
     if y is None:
@@ -151,42 +155,29 @@ def freq_dropout(x, y=None, dropout_rate=0.2, dim=0, keep_dominant=True):
     x_torch, y_torch = torch.from_numpy(x), torch.from_numpy(y)
     xy = torch.cat([x_torch, y_torch], dim=0)
     xy_f = torch.fft.rfft(xy, dim=0)
+    
+    # Create dropout mask
     m = torch.FloatTensor(xy_f.shape).uniform_() < dropout_rate
+    
+    if keep_dominant:
+        # Calculate amplitude and preserve top frequencies (similar to FITS)
+        amp = torch.abs(xy_f)
+        _, sorted_indices = torch.sort(amp, dim=dim, descending=True)
+        # Preserve top 10% of frequencies from dropout
+        n_preserve = max(1, int(0.1 * xy_f.shape[dim]))
+        preserve_mask = torch.zeros_like(m, dtype=torch.bool)
+        for i in range(n_preserve):
+            if dim == 0 and i < sorted_indices.shape[0]:
+                preserve_mask[sorted_indices[i]] = True
+        # Don't dropout the dominant frequencies
+        m = m & ~preserve_mask
+    
     freal = xy_f.real.masked_fill(m, 0)
     fimag = xy_f.imag.masked_fill(m, 0)
     xy_f = torch.complex(freal, fimag)
     xy = torch.fft.irfft(xy_f, dim=dim)
     x_out, y_out = xy[:x_torch.shape[0], :].numpy(), xy[-y_torch.shape[0]:, :].numpy()
     return x_out
-
-def butterworth_lowpass_filter(x, cutoff, fs, order=4):
-    """
-    Applies a Butterworth low-pass filter to the input time series x.
-    cutoff: cutoff frequency (Hz)
-    fs: sampling frequency (Hz)
-    order: filter order (higher = sharper cutoff)
-    """
-    x = np.asarray(x)
-    nyq = 0.5 * fs
-    normal_cutoff = cutoff / nyq
-    b, a = butter(order, normal_cutoff, btype='low', analog=False)
-    y = filtfilt(b, a, x)
-    return y
-
-def low_pass_filter(x, cutoff_ratio=0.5, dim=0):
-    """
-    Applies a low-pass filter to the input time series x.
-    cutoff_ratio: Fraction of frequencies to keep (e.g., 0.2 keeps the lowest 20%).
-    """
-    x = np.asarray(x)
-    x_torch = torch.from_numpy(x)
-    x_f = torch.fft.rfft(x_torch, dim=dim)
-    n_freqs = x_f.shape[0]
-    cutoff = int(n_freqs * cutoff_ratio)
-    # Zero out frequencies above cutoff
-    x_f[cutoff:] = 0
-    x_filtered = torch.fft.irfft(x_f, dim=dim)
-    return x_filtered.numpy()
 
 def create_train_and_val_datasets_with_dates(
     name,
@@ -199,18 +190,69 @@ def create_train_and_val_datasets_with_dates(
     train_start_date=None,
     freq=None,
     last_k_percentage=None,
+    # Legacy filtering parameters (deprecated - use filter_processor instead)
     lpf = False,
     butterworth = False,
+    fits_filter = False,
+    cumulative_power_filter = False,
     butter_cutoff = 0.1,
     butter_fs = 1.0,
     butter_order = 4,
     dropout_rate = 0.2,
+    base_period = None,  # Will be auto-inferred from frequency if None
+    h_order = 2,
+    energy_threshold = 0.9,
+    fits_then_cps: bool = False,
+    # New clean interface
+    filter_processor: FilterProcessor = None,
 ):
     """
-    Train Start date is assumed to be the start of the series if not provided
-    Freq is not given is inferred from the data
-    We can use ListDataset to just group multiple time series - https://github.com/awslabs/gluonts/issues/695
+    Create train and validation datasets with optional time series filtering.
+    
+    Train Start date is assumed to be the start of the series if not provided.
+    Freq is inferred from the data if not given.
+    We can use ListDataset to just group multiple time series.
+    
+    Filtering:
+        Use either the new filter_processor parameter (recommended) or the legacy boolean flags.
+        
+        New approach:
+        - filter_processor: FilterProcessor instance with configured filtering method
+        
+        Legacy approach (deprecated):
+        - lpf/butterworth/fits_filter/cumulative_power_filter/fits_then_cps: boolean flags
+        - Various filter parameters (dropout_rate, butter_*, base_period, etc.)
     """
+    
+    # Create FilterProcessor from legacy parameters if no processor provided
+    if filter_processor is None:
+        # Determine method from legacy boolean flags
+        if fits_then_cps:
+            method = "fits_then_cps"
+        elif fits_filter:
+            method = "fits"
+        elif cumulative_power_filter:
+            method = "cps"
+        elif butterworth:
+            method = "butterworth"
+        elif lpf:
+            method = "lpf"
+        else:
+            method = "none"
+        
+        # Create processor with legacy parameters
+        filter_processor = FilterProcessor(
+            method=method,
+            dropout_rate=dropout_rate,
+            butter_cutoff=butter_cutoff,
+            butter_fs=butter_fs,
+            butter_order=butter_order,
+            base_period=base_period,
+            h_order=h_order,
+            energy_threshold=energy_threshold,
+            verbose=True,
+        )
+    
     # TODO: Modify the dataset variable that is being returned here
     # TODO: Find a way to calculate the butter_cutoff for each different dataset
     if name in ("ett_h1", "ett_h2", "ett_m1", "ett_m2"):
@@ -256,6 +298,9 @@ def create_train_and_val_datasets_with_dates(
     if freq is None:
         freq = raw_dataset.metadata.freq
     timestep_delta = pd.tseries.frequencies.to_offset(freq)
+    
+    # The FilterProcessor will handle base_period inference internally
+    
     raw_train_dataset = raw_dataset.train
 
     if not num_val_windows and not val_start_date:
@@ -285,15 +330,12 @@ def create_train_and_val_datasets_with_dates(
         else:
             train_start_index = 0
 
-        # NOTE: Shashwat's changes
-
+        # Extract target data
         target = series["target"][train_start_index:train_end_index]
 
-        if (lpf) :
-            target = low_pass_filter(target, dropout_rate=dropout_rate) 
-        elif butterworth :
-            target = butterworth_lowpass_filter(target, butter_cutoff, butter_fs, butter_order)
-
+        # Apply filtering using FilterProcessor (Shashwat's changes - abstracted)
+        target = filter_processor.process(target, freq=freq, context="train")
+        
         s_train["target"] = target 
         s_train["item_id"] = i
         s_train["data_id"] = data_id
@@ -322,10 +364,8 @@ def create_train_and_val_datasets_with_dates(
         val_start_index = train_end_index - prediction_length - history_length
         target = series["target"][val_start_index:]
 
-        if (lpf) :
-            target = low_pass_filter(target, dropout_rate=dropout_rate) 
-        elif butterworth :
-            target = butterworth_lowpass_filter(target, butter_cutoff, butter_fs, butter_order)
+        # Apply filtering using FilterProcessor
+        target = filter_processor.process(target, freq=freq, context="val")
         
         s_val["target"] = target 
         s_val["item_id"] = i

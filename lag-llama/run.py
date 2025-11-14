@@ -43,6 +43,7 @@ from data.data_utils import (
     create_test_dataset,
     create_train_and_val_datasets_with_dates,
 )
+from data.filter_processor import create_filter_processor_from_args
 
 from data.dataset_list import ALL_DATASETS
 from utils.utils import plot_forecasts, set_seed
@@ -58,6 +59,9 @@ def train(args):
 
     # # Print GPU stats
     # print_gpu_stats()
+
+    # Create FilterProcessor from command line arguments
+    filter_processor = create_filter_processor_from_args(args)
 
     # Create a directory to store the results in
     # This string is made independent of hyperparameters here, as more hyperparameters / arguments may be added later
@@ -382,6 +386,7 @@ def train(args):
                     prediction_length,
                     num_val_windows=args.num_validation_windows,
                     last_k_percentage=args.single_dataset_last_k_percentage,
+                    filter_processor=filter_processor,
                 )
                 print(
                     "Dataset:",
@@ -445,6 +450,7 @@ def train(args):
                 prediction_length,
                 num_val_windows=args.num_validation_windows,
                 last_k_percentage=args.single_dataset_last_k_percentage,
+                filter_processor=filter_processor,
             )
             print(
                 "Dataset:",
@@ -899,6 +905,48 @@ if __name__ == "__main__":
     # Distribution output
     parser.add_argument(
         "--distr_output", type=str, default="studentT", choices=["studentT"]
+    )
+
+    # Filtering arguments
+    parser.add_argument(
+        "--lpf", action="store_true", default=False,
+        help="Apply simple low-pass filter with cutoff_ratio=dropout_rate"
+    )
+    parser.add_argument(
+        "--butterworth", action="store_true", default=False,
+        help="Apply Butterworth low-pass filter"
+    )
+    parser.add_argument(
+        "--fits_filter", action="store_true", default=False,
+        help="Apply FITS-style filtering based on sequence length and base period"
+    )
+    parser.add_argument(
+        "--cumulative_power_filter", action="store_true", default=False,
+        help="Apply filtering based on cumulative power spectrum analysis"
+    )
+    parser.add_argument(
+        "--fits_then_cps", action="store_true", default=False,
+        help="Apply pipeline: FITS -> compute energy ratio -> CPS with that ratio"
+    )
+    parser.add_argument(
+        "--filter_dropout_rate", type=float, default=0.2,
+        help="Cutoff ratio for lpf and dropout rate for other filters (default: 0.2)"
+    )
+    parser.add_argument(
+        "--filter_butter_order", type=int, default=4,
+        help="Butterworth filter order (higher = sharper cutoff) (default: 4)"
+    )
+    parser.add_argument(
+        "--filter_base_period", type=int, default=None,
+        help="Base period for FITS filter. If None, will be auto-inferred from frequency"
+    )
+    parser.add_argument(
+        "--filter_h_order", type=int, default=2,
+        help="Harmonic order for FITS filter (default: 2)"
+    )
+    parser.add_argument(
+        "--filter_energy_threshold", type=float, default=0.9,
+        help="Energy threshold for cumulative power filter (default: 0.9)"
     )
 
     args = parser.parse_args()

@@ -1,3 +1,119 @@
-datasets
-logs
-__pycache__
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+env/
+.venv/
+.env/
+ENV/
+env.bak/
+venv.bak/
+
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+secrets.json
+config.json
+credentials.json
+
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb_checkpoints
+
+# Machine Learning specific
+datasets/
+data/
+raw_data/
+processed_data/
+logs/
+wandb/
+mlruns/
+.mlflow/
+tensorboard_logs/
+tb_logs/
+experiments/
+results/
+outputs/
+checkpoints/
+saved_models/
+models/
+weights/
+*.ckpt
+*.pth
+*.pt
+*.pkl
+*.pickle
+*.joblib
+*.h5
+*.hdf5
+*.model
+*.bin
+*.safetensors
+
+# Large files and archives
+*.zip
+*.tar.gz
+*.rar
+*.7z
+*.gz
+*.bz2
+*.xz
+
+# Images and media (unless specifically needed)
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+*.svg
+*.ico
+*.mp4
+*.avi
+*.mov
+*.wmv
+*.flv
+*.webm
+*.mp3
+*.wav
+*.flac
+
+# Documentation builds
+docs/_build/
+site/
+
+# Cache directories
+.cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# OS generated files
+*.log
+*.tmp
+*.temp
+
+# Project specific
+ckpt_out/
+scratch/
+hyperparameters/
+stats/
+notebooks/

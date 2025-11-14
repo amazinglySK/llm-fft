@@ -3,28 +3,24 @@ set -euo pipefail
 
 GDRIVE_LINK="https://drive.google.com/file/d/1JrDWMZyoPsc6d1wAAjgm3PosbGus-jCE/view?usp=sharing"
 
-VENV_DIR="llmfft"
+CONDA_ENV_NAME="llmfft"
 TAR_NAME="nonmonash_datasets.tar.gz"
 DATASET_DIR="lag-llama/datasets"
 
-# choose python
-if command -v python3.10 >/dev/null 2>&1; then
-  PYTHON_BIN=python3.10
-elif command -v python3 >/dev/null 2>&1; then
-  PYTHON_BIN=python3
-else
-  echo "Error: No suitable python interpreter found (need python3)."
+# Check if conda is available
+if ! command -v conda >/dev/null 2>&1; then
+  echo "Error: conda not found. Please install conda first."
   exit 1
 fi
 
-echo "Using interpreter: $($PYTHON_BIN --version)"
+echo "Using conda: $(conda --version)"
 
-echo "👉 Creating virtual environment in $VENV_DIR ..."
-$PYTHON_BIN -m venv "$VENV_DIR"
+echo "👉 Creating conda environment '$CONDA_ENV_NAME' with Python 3.10.8..."
+conda create -n "$CONDA_ENV_NAME" python=3.10.8 -y
 
-echo "👉 Activating virtual environment..."
-# shellcheck disable=SC1091
-source "$VENV_DIR/bin/activate"
+echo "👉 Activating conda environment..."
+eval "$(conda shell.bash hook)"
+conda activate "$CONDA_ENV_NAME"
 
 echo "👉 Upgrading pip..."
 python -m pip install --upgrade pip
@@ -45,9 +41,9 @@ mkdir -p "$DATASET_DIR"
 
 echo "👉 Downloading dataset from Google Drive..."
 if [[ "$GDRIVE_LINK" == http* ]]; then
-  python -m gdown "$GDRIVE_LINK" -O "$TAR_NAME"
+  python -m gdown "$GDRIVE_LINK" -O "$TAR_NAME" --fuzzy
 else
-  python -m gdown --id "$GDRIVE_LINK" -O "$TAR_NAME"
+  python -m gdown --id "$GDRIVE_LINK" -O "$TAR_NAME" --fuzzy
 fi
 
 echo "👉 Extracting $TAR_NAME into $DATASET_DIR ..."
@@ -57,4 +53,4 @@ echo "🧹 Removing $TAR_NAME ..."
 rm -f "$TAR_NAME"
 
 echo "✅ Setup complete!"
-echo "To activate environment later: source $VENV_DIR/bin/activate"
+echo "To activate environment later: conda activate $CONDA_ENV_NAME"

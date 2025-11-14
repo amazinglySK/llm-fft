@@ -40,7 +40,9 @@ Thumbs.db
 
 # Machine Learning specific
 datasets/
-data/
+data/datasets/
+data/raw/
+data/processed/
 raw_data/
 processed_data/
 logs/

@@ -300,5 +300,5 @@ def create_filter_processor_from_args(args) -> FilterProcessor:
         base_period=getattr(args, 'filter_base_period', None),
         h_order=getattr(args, 'filter_h_order', 2),
         energy_threshold=getattr(args, 'filter_energy_threshold', 0.9),
-        verbose=True,
+        verbose=False,
     )

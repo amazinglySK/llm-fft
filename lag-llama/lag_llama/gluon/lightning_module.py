@@ -100,7 +100,6 @@ class LagLlamaLightningModule(LightningModule):
         use_kv_cache: bool = True,
         use_single_pass_sampling: bool = False,
         filter_processor: FilterProcessor = None,
-        freq: str = None,
         **kwargs,
     ):
         super().__init__()
@@ -148,7 +147,6 @@ class LagLlamaLightningModule(LightningModule):
         self.use_kv_cache = use_kv_cache
         self.use_single_pass_sampling = use_single_pass_sampling
         self.filter_processor = filter_processor or FilterProcessor(method="none")
-        self.freq = freq
         self.transforms = []
         aug_probs = dict(
             Jitter=dict(prob=self.jitter_prob, sigma=self.jitter_sigma),
@@ -423,7 +421,7 @@ class LagLlamaLightningModule(LightningModule):
             filtered_past_target = torch.zeros_like(batch["past_target"])
             for i in range(batch_size):
                 target_np = batch["past_target"][i].cpu().numpy()
-                filtered_target = self.filter_processor.process(target_np, freq=self.freq, context="train")
+                filtered_target = self.filter_processor.process(target_np, freq=None, context="train")
                 filtered_past_target[i] = torch.from_numpy(filtered_target).to(batch["past_target"].device)
             batch["past_target"] = filtered_past_target
         
@@ -496,7 +494,7 @@ class LagLlamaLightningModule(LightningModule):
             filtered_past_target = torch.zeros_like(batch["past_target"])
             for i in range(batch_size):
                 target_np = batch["past_target"][i].cpu().numpy()
-                filtered_target = self.filter_processor.process(target_np, freq=self.freq, context="val")
+                filtered_target = self.filter_processor.process(target_np, freq=None, context="val")
                 filtered_past_target[i] = torch.from_numpy(filtered_target).to(batch["past_target"].device)
             batch["past_target"] = filtered_past_target
         

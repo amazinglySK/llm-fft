@@ -158,7 +158,6 @@ class LagLlamaEstimator(PyTorchLightningEstimator):
         nonnegative_pred_samples: bool = False,
         use_single_pass_sampling: bool = False,
         filter_processor: FilterProcessor = None,
-        freq: str = None,
         device: torch.device = torch.device("cuda")
         if torch.cuda.is_available()
         else torch.device("cpu"),
@@ -247,7 +246,6 @@ class LagLlamaEstimator(PyTorchLightningEstimator):
         self.use_cosine_annealing_lr = use_cosine_annealing_lr
         self.cosine_annealing_lr_args = cosine_annealing_lr_args
         self.filter_processor = filter_processor
-        self.freq = freq
         self.device = device
 
     @classmethod
@@ -345,7 +343,6 @@ class LagLlamaEstimator(PyTorchLightningEstimator):
                 track_loss_per_series=self.track_loss_per_series,
                 nonnegative_pred_samples=self.nonnegative_pred_samples,
                 filter_processor=self.filter_processor,
-                freq=self.freq,
             )
         else:
             return LagLlamaLightningModule(
@@ -384,7 +381,6 @@ class LagLlamaEstimator(PyTorchLightningEstimator):
                 track_loss_per_series=self.track_loss_per_series,
                 nonnegative_pred_samples=self.nonnegative_pred_samples,
                 filter_processor=self.filter_processor,
-                freq=self.freq,
             )
 
     def _create_instance_splitter(self, module: LagLlamaLightningModule, mode: str):

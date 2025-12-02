@@ -291,7 +291,6 @@ def train(args):
         track_loss_per_series=args.single_dataset != None,
         ckpt_path=ckpt_path,
         filter_processor=filter_processor,
-        freq=args.freq,
         trainer_kwargs=dict(
             max_epochs=args.max_epochs,
             accelerator="gpu",

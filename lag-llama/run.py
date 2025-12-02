@@ -290,6 +290,8 @@ def train(args):
         cosine_annealing_lr_args=cosine_annealing_lr_args,
         track_loss_per_series=args.single_dataset != None,
         ckpt_path=ckpt_path,
+        filter_processor=filter_processor,
+        freq=args.freq,
         trainer_kwargs=dict(
             max_epochs=args.max_epochs,
             accelerator="gpu",
@@ -386,7 +388,6 @@ def train(args):
                     prediction_length,
                     num_val_windows=args.num_validation_windows,
                     last_k_percentage=args.single_dataset_last_k_percentage,
-                    filter_processor=filter_processor,
                 )
                 print(
                     "Dataset:",
@@ -450,7 +451,6 @@ def train(args):
                 prediction_length,
                 num_val_windows=args.num_validation_windows,
                 last_k_percentage=args.single_dataset_last_k_percentage,
-                filter_processor=filter_processor,
             )
             print(
                 "Dataset:",

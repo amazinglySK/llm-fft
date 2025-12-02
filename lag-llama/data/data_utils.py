@@ -330,11 +330,8 @@ def create_train_and_val_datasets_with_dates(
         else:
             train_start_index = 0
 
-        # Extract target data
+        # Extract target data (no filtering applied here - will be done per batch)
         target = series["target"][train_start_index:train_end_index]
-
-        # Apply filtering using FilterProcessor (Shashwat's changes - abstracted)
-        target = filter_processor.process(target, freq=freq, context="train")
         
         s_train["target"] = target 
         s_train["item_id"] = i
@@ -363,9 +360,6 @@ def create_train_and_val_datasets_with_dates(
             train_end_index = len(series["target"]) - num_val_windows
         val_start_index = train_end_index - prediction_length - history_length
         target = series["target"][val_start_index:]
-
-        # Apply filtering using FilterProcessor
-        target = filter_processor.process(target, freq=freq, context="val")
         
         s_val["target"] = target 
         s_val["item_id"] = i

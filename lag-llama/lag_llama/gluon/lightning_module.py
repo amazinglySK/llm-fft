@@ -38,6 +38,7 @@ from gluonts.torch.util import repeat_along_dim, take_last
 from lightning import LightningModule
 
 from lag_llama.model.module import LagLlamaModel
+from data.filter_processor import FilterProcessor
 
 
 class LagLlamaLightningModule(LightningModule):
@@ -98,6 +99,8 @@ class LagLlamaLightningModule(LightningModule):
         nonnegative_pred_samples: bool = False,
         use_kv_cache: bool = True,
         use_single_pass_sampling: bool = False,
+        filter_processor: FilterProcessor = None,
+        freq: str = None,
         **kwargs,
     ):
         super().__init__()
@@ -144,6 +147,8 @@ class LagLlamaLightningModule(LightningModule):
         self.val_loss_dict_per_series = {}
         self.use_kv_cache = use_kv_cache
         self.use_single_pass_sampling = use_single_pass_sampling
+        self.filter_processor = filter_processor or FilterProcessor(method="none")
+        self.freq = freq
         self.transforms = []
         aug_probs = dict(
             Jitter=dict(prob=self.jitter_prob, sigma=self.jitter_sigma),
@@ -412,6 +417,16 @@ class LagLlamaLightningModule(LightningModule):
         """
         Execute training step.
         """
+        # Apply filtering to past_target (model input predictor window)
+        if self.filter_processor.method != "none":
+            batch_size, seq_len = batch["past_target"].shape
+            filtered_past_target = torch.zeros_like(batch["past_target"])
+            for i in range(batch_size):
+                target_np = batch["past_target"][i].cpu().numpy()
+                filtered_target = self.filter_processor.process(target_np, freq=self.freq, context="train")
+                filtered_past_target[i] = torch.from_numpy(filtered_target).to(batch["past_target"].device)
+            batch["past_target"] = filtered_past_target
+        
         if random.random() < self.aug_prob:
             # Freq mix and Freq mask have separate functions
             if self.freq_mask_rate > 0:
@@ -475,6 +490,16 @@ class LagLlamaLightningModule(LightningModule):
         """
         Execute validation step.
         """
+        # Apply filtering to past_target (model input predictor window)
+        if self.filter_processor.method != "none":
+            batch_size, seq_len = batch["past_target"].shape
+            filtered_past_target = torch.zeros_like(batch["past_target"])
+            for i in range(batch_size):
+                target_np = batch["past_target"][i].cpu().numpy()
+                filtered_target = self.filter_processor.process(target_np, freq=self.freq, context="val")
+                filtered_past_target[i] = torch.from_numpy(filtered_target).to(batch["past_target"].device)
+            batch["past_target"] = filtered_past_target
+        
         val_loss_avg = self._compute_loss(
             batch, return_observed_values=False, orignal_scale=False
         )

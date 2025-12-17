@@ -109,7 +109,6 @@ class BatchAugmentation():
 
 
 class DatasetAugmentation():
-    # TODO: This is the section for fft preprocessing
     def __init__(self):
         pass
 

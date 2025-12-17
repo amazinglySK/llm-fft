@@ -253,8 +253,6 @@ def create_train_and_val_datasets_with_dates(
             verbose=True,
         )
     
-    # TODO: Modify the dataset variable that is being returned here
-    # TODO: Find a way to calculate the butter_cutoff for each different dataset
     if name in ("ett_h1", "ett_h2", "ett_m1", "ett_m2"):
         path = os.path.join(dataset_path, "ett_datasets")
         raw_dataset = get_ett_dataset(name, path)
@@ -383,6 +381,7 @@ def create_train_and_val_datasets_with_dates(
         total_val_windows,
         max_train_end_date,
         total_points,
+        freq,
     )
 
 
@@ -453,4 +452,4 @@ def create_test_dataset(name, dataset_path, history_length, freq=None, data_id=N
             series_copy["data_id"] = data_id
             data.append(series_copy)
         total_points += len(data[-1]["target"])
-    return ListDataset(data, freq=freq), prediction_length, total_points
+    return ListDataset(data, freq=freq), prediction_length, total_points, freq

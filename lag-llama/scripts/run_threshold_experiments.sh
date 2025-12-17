@@ -19,7 +19,7 @@ WANDB_ENTITY="$1"
 WANDB_PROJECT="$2"
 
 # Array of energy thresholds to test
-THRESHOLDS=(0.7 0.75 0.8 0.85 0.95)
+THRESHOLDS=(0.7 0.75 0.8 0.85 0.9 0.95)
 
 echo "=================================================="
 echo "Running sequential pretraining experiments"

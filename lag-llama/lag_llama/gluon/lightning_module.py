@@ -100,6 +100,7 @@ class LagLlamaLightningModule(LightningModule):
         use_kv_cache: bool = True,
         use_single_pass_sampling: bool = False,
         filter_processor: FilterProcessor = None,
+        data_id_to_freq_map: dict = {},
         **kwargs,
     ):
         super().__init__()
@@ -147,6 +148,10 @@ class LagLlamaLightningModule(LightningModule):
         self.use_kv_cache = use_kv_cache
         self.use_single_pass_sampling = use_single_pass_sampling
         self.filter_processor = filter_processor or FilterProcessor(method="none")
+        
+        # Store frequency mapping for per-sample filtering
+        self.data_id_to_freq_map = data_id_to_freq_map
+        
         self.transforms = []
         aug_probs = dict(
             Jitter=dict(prob=self.jitter_prob, sigma=self.jitter_sigma),
@@ -415,14 +420,25 @@ class LagLlamaLightningModule(LightningModule):
         """
         Execute training step.
         """
-        # Apply filtering to past_target (model input predictor window)
+        # Apply filtering to past_target (model input predictor window) with proper frequency context
         if self.filter_processor.method != "none":
             batch_size, seq_len = batch["past_target"].shape
             filtered_past_target = torch.zeros_like(batch["past_target"])
+            
             for i in range(batch_size):
                 target_np = batch["past_target"][i].cpu().numpy()
-                filtered_target = self.filter_processor.process(target_np, freq=None, context="train")
+                
+                # Get frequency for this sample from data_id
+                freq = None
+                if "data_id" in batch and batch["data_id"] is not None:
+                    data_id = batch["data_id"][i].item() if torch.is_tensor(batch["data_id"][i]) else batch["data_id"][i]
+                    # Look up frequency from the mapping dictionary
+                    freq = self.data_id_to_freq_map.get(int(data_id), None)
+                
+                # Process with proper frequency context
+                filtered_target = self.filter_processor.process(target_np, freq=freq, context="train")
                 filtered_past_target[i] = torch.from_numpy(filtered_target).to(batch["past_target"].device)
+            
             batch["past_target"] = filtered_past_target
         
         if random.random() < self.aug_prob:
@@ -488,14 +504,25 @@ class LagLlamaLightningModule(LightningModule):
         """
         Execute validation step.
         """
-        # Apply filtering to past_target (model input predictor window)
+        # Apply filtering to past_target (model input predictor window) with proper frequency context
         if self.filter_processor.method != "none":
             batch_size, seq_len = batch["past_target"].shape
             filtered_past_target = torch.zeros_like(batch["past_target"])
+            
             for i in range(batch_size):
                 target_np = batch["past_target"][i].cpu().numpy()
-                filtered_target = self.filter_processor.process(target_np, freq=None, context="val")
+                
+                # Get frequency for this sample from data_id
+                freq = None
+                if "data_id" in batch and batch["data_id"] is not None:
+                    data_id = batch["data_id"][i].item() if torch.is_tensor(batch["data_id"][i]) else batch["data_id"][i]
+                    # Look up frequency from the mapping dictionary
+                    freq = self.data_id_to_freq_map.get(int(data_id), None)
+                
+                # Process with proper frequency context
+                filtered_target = self.filter_processor.process(target_np, freq=freq, context="val")
                 filtered_past_target[i] = torch.from_numpy(filtered_target).to(batch["past_target"].device)
+            
             batch["past_target"] = filtered_past_target
         
         val_loss_avg = self._compute_loss(

@@ -128,23 +128,25 @@ def train(args):
             if not os.path.isfile(ckpt_path):
                 ckpt_path = None
         else:
-            if args.evaluate_only:
-                full_experiment_name_original = (
-                    experiment_name + "-seed-" + str(args.seed)
-                )
-                experiment_id_original = sha1(
-                    full_experiment_name_original.encode("utf-8")
-                ).hexdigest()[:8]
-                checkpoint_dir_wandb = os.path.join(
-                    fulldir_experiments,
-                    "lag-llama",
-                    experiment_id_original,
-                    "checkpoints",
-                )
-                file = os.listdir(checkpoint_dir_wandb)[-1]
-                if file:
-                    ckpt_path = os.path.join(checkpoint_dir_wandb, file)
-            elif args.evaluate_only:
+            full_experiment_name_original = (
+                experiment_name + "-seed-" + str(args.seed)
+            )
+            experiment_id_original = sha1(
+                full_experiment_name_original.encode("utf-8")
+            ).hexdigest()[:8]
+            checkpoint_dir_wandb = os.path.join(
+                fulldir_experiments,
+                "lag-llama",
+                experiment_id_original,
+                "checkpoints",
+            )
+            if os.path.isdir(checkpoint_dir_wandb):
+                wandb_ckpts = os.listdir(checkpoint_dir_wandb)
+                if wandb_ckpts:
+                    ckpt_path = os.path.join(
+                        checkpoint_dir_wandb, sorted(wandb_ckpts)[-1]
+                    )
+            if not ckpt_path:
                 for file in os.listdir(checkpoint_dir):
                     if "best" in file:
                         ckpt_path = checkpoint_dir + "/" + file
@@ -209,6 +211,7 @@ def train(args):
         print("Training datasets:", train_dataset_names)
         print("Test datasets:", args.test_datasets)
         data_id_to_name_map = {}
+        data_id_to_freq_map = {}
         name_to_data_id_map = {}
         for data_id, name in enumerate(train_dataset_names):
             data_id_to_name_map[data_id] = name
@@ -221,13 +224,14 @@ def train(args):
     else:
         print("Training and test on", args.single_dataset)
         data_id_to_name_map = {}
+        data_id_to_freq_map = {}
         name_to_data_id_map = {}
         data_id_to_name_map[0] = args.single_dataset
         name_to_data_id_map[args.single_dataset] = 0
 
     # Get prediction length and set it if we are in the single dataset
     if args.single_dataset and args.use_dataset_prediction_length:
-        _, prediction_length, _ = create_test_dataset(
+        _, prediction_length, _, _ = create_test_dataset(
             args.single_dataset, args.dataset_path, 0
         )
         args.prediction_length = prediction_length
@@ -247,6 +251,7 @@ def train(args):
         context_length=args.context_length,
         input_size=1,
         batch_size=args.batch_size,
+        data_id_to_freq_map=data_id_to_freq_map,
         n_layer=args.n_layer,
         n_embd_per_head=args.n_embd_per_head,
         n_head=args.n_head,
@@ -370,7 +375,6 @@ def train(args):
 
             for data_id, name in enumerate(train_dataset_names):
                 data_id = name_to_data_id_map[name]
-                # TODO: I think this is how they load in their data
                 (
                     train_dataset,
                     val_dataset,
@@ -379,6 +383,7 @@ def train(args):
                     total_val_windows,
                     max_train_end_date,
                     total_points,
+                    dataset_freq,
                 ) = create_train_and_val_datasets_with_dates(
                     name,
                     args.dataset_path,
@@ -401,6 +406,10 @@ def train(args):
                 dataset_num_series.append(len(train_dataset))
                 dataset_train_num_points.append(total_train_points)
                 dataset_val_num_points.append(total_val_points)
+                data_id_to_freq_map[data_id] = dataset_freq
+
+            # Ensure estimator sees updated frequency map after dataset creation
+            estimator.data_id_to_freq_map = data_id_to_freq_map
 
             # Add test splits of test data to validation dataset, just for tracking purposes
             test_datasets_num_series = []
@@ -442,6 +451,7 @@ def train(args):
                 total_val_windows,
                 max_train_end_date,
                 total_points,
+                dataset_freq,
             ) = create_train_and_val_datasets_with_dates(
                 args.single_dataset,
                 args.dataset_path,
@@ -459,6 +469,8 @@ def train(args):
                 "Total val points:",
                 total_val_points,
             )
+            data_id_to_freq_map[0] = dataset_freq
+            estimator.data_id_to_freq_map = data_id_to_freq_map
 
         # Batch size search since when we scale up, we might not be able to use the same batch size for all models
         if args.search_batch_size:
@@ -544,9 +556,12 @@ def train(args):
 
     for name in evaluation_datasets:  # [test_dataset]:
         print("Evaluating on", name)
-        test_data, prediction_length, total_points = create_test_dataset(
+        test_data, prediction_length, total_points, dataset_freq = create_test_dataset(
             name, args.dataset_path, window_size
         )
+        eval_data_id = name_to_data_id_map[name]
+        data_id_to_freq_map[eval_data_id] = dataset_freq
+        estimator.data_id_to_freq_map = data_id_to_freq_map
         print("# of Series in the test data:", len(test_data))
 
         # Adapt evaluator to new dataset

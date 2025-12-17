@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from typing import Any, Dict, Iterable, Optional
+import warnings
 
 import lightning as L
 import torch
@@ -158,6 +159,7 @@ class LagLlamaEstimator(PyTorchLightningEstimator):
         nonnegative_pred_samples: bool = False,
         use_single_pass_sampling: bool = False,
         filter_processor: FilterProcessor = None,
+        data_id_to_freq_map: dict = {},
         device: torch.device = torch.device("cuda")
         if torch.cuda.is_available()
         else torch.device("cpu"),
@@ -173,11 +175,25 @@ class LagLlamaEstimator(PyTorchLightningEstimator):
         self.context_length = context_length
         self.max_context_length = max_context_length
 
+        # Normalize any legacy aliases so pandas can parse them when deriving lags.
+        freq_alias_map = {
+            "qe": "Q",  # quarterly end
+            "me": "M",  # month end
+        }
+
         lag_indices = []
         for freq in lags_seq:
-            lag_indices.extend(
-                get_lags_for_frequency(freq_str=freq, num_default_lags=1)
+            normalized_freq = freq_alias_map.get(
+                freq.lower() if isinstance(freq, str) else freq, freq
             )
+            try:
+                lag_indices.extend(
+                    get_lags_for_frequency(freq_str=normalized_freq, num_default_lags=1)
+                )
+            except ValueError:
+                warnings.warn(
+                    f"Skipping lag derivation for unsupported frequency alias '{freq}'."
+                )
 
         if len(lag_indices):
             self.lags_seq = sorted(set(lag_indices))
@@ -246,6 +262,7 @@ class LagLlamaEstimator(PyTorchLightningEstimator):
         self.use_cosine_annealing_lr = use_cosine_annealing_lr
         self.cosine_annealing_lr_args = cosine_annealing_lr_args
         self.filter_processor = filter_processor
+        self.data_id_to_freq_map = data_id_to_freq_map
         self.device = device
 
     @classmethod
@@ -343,6 +360,7 @@ class LagLlamaEstimator(PyTorchLightningEstimator):
                 track_loss_per_series=self.track_loss_per_series,
                 nonnegative_pred_samples=self.nonnegative_pred_samples,
                 filter_processor=self.filter_processor,
+                data_id_to_freq_map=self.data_id_to_freq_map,
             )
         else:
             return LagLlamaLightningModule(
@@ -381,6 +399,7 @@ class LagLlamaEstimator(PyTorchLightningEstimator):
                 track_loss_per_series=self.track_loss_per_series,
                 nonnegative_pred_samples=self.nonnegative_pred_samples,
                 filter_processor=self.filter_processor,
+                data_id_to_freq_map=self.data_id_to_freq_map,
             )
 
     def _create_instance_splitter(self, module: LagLlamaLightningModule, mode: str):

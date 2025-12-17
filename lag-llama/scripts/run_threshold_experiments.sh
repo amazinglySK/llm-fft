@@ -36,7 +36,7 @@ do
     echo "Starting experiment with threshold: $THRESHOLD"
     echo "=================================================="
     
-    ./pretrain_filtered.sh "$WANDB_ENTITY" "$WANDB_PROJECT" "$THRESHOLD"
+    ./scripts/pretrain_filtered.sh "$WANDB_ENTITY" "$WANDB_PROJECT" "$THRESHOLD"
     
     echo ""
     echo "=================================================="

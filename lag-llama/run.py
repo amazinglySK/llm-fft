@@ -245,6 +245,27 @@ def train(args):
     else:
         cosine_annealing_lr_args = {}
 
+    # Configure accelerator/devices for trainer
+    trainer_accelerator = args.accelerator
+    if trainer_accelerator == "gpu" and not torch.cuda.is_available():
+        print("CUDA not available; falling back to CPU accelerator.")
+        trainer_accelerator = "cpu"
+
+    trainer_kwargs = dict(
+        max_epochs=args.max_epochs,
+        accelerator=trainer_accelerator,
+        limit_val_batches=args.limit_val_batches,
+        logger=logger,
+        callbacks=callbacks,
+        default_root_dir=fulldir_experiments,
+    )
+
+    if trainer_accelerator == "gpu":
+        trainer_kwargs["devices"] = [args.gpu]
+        estimator_device = torch.device(f"cuda:{args.gpu}")
+    else:
+        estimator_device = torch.device("cpu")
+
     # Create the estimator
     estimator = LagLlamaEstimator(
         prediction_length=args.prediction_length,
@@ -296,15 +317,8 @@ def train(args):
         track_loss_per_series=args.single_dataset != None,
         ckpt_path=ckpt_path,
         filter_processor=filter_processor,
-        trainer_kwargs=dict(
-            max_epochs=args.max_epochs,
-            accelerator="gpu",
-            devices=[args.gpu],
-            limit_val_batches=args.limit_val_batches,
-            logger=logger,
-            callbacks=callbacks,
-            default_root_dir=fulldir_experiments,
-        ),
+        trainer_kwargs=trainer_kwargs,
+        device=estimator_device,
     )
 
     # Save the args as config to the directory
@@ -505,7 +519,8 @@ def train(args):
                 except RuntimeError as e:
                     if "out of memory" in str(e):
                         gc.collect()
-                        torch.cuda.empty_cache()
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
                         if batch_size == 1:
                             print(
                                 "Batch is already at the minimum. Cannot reduce further. Exiting..."
@@ -587,7 +602,8 @@ def train(args):
             except RuntimeError as e:
                 if "out of memory" in str(e):
                     gc.collect()
-                    torch.cuda.empty_cache()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
                     if batch_size == 1:
                         print(
                             "Batch is already at the minimum. Cannot reduce further. Exiting..."
@@ -842,6 +858,13 @@ if __name__ == "__main__":
 
     # GPU ID
     parser.add_argument("--gpu", type=int, default=0)
+    parser.add_argument(
+        "--accelerator",
+        type=str,
+        default="gpu",
+        choices=["gpu", "cpu"],
+        help="Trainer accelerator backend (gpu or cpu)",
+    )
 
     # Directory to save everything in
     parser.add_argument("-r", "--results_dir", type=str, required=True)

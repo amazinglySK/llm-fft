@@ -12,20 +12,33 @@
 set -euo pipefail
 
 # === USAGE ===
-# ./pretrain_with_fits_then_cps.sh <wandb_entity> <wandb_project> <energy_threshold>
+# ./pretrain_with_fits_then_cps.sh <wandb_entity> <wandb_project> <energy_threshold> [accelerator]
 #
 # Example:
 # ./pretrain_with_fits_then_cps.sh myusername lag-llama-fits-experiment 0.9
 
 if [ "$#" -lt 3 ]; then
   echo "❌ Error: You must provide Weights & Biases entity, project name, and energy threshold."
-  echo "Usage: $0 <wandb_entity> <wandb_project> <energy_threshold>"
+    echo "Usage: $0 <wandb_entity> <wandb_project> <energy_threshold> [accelerator]"
   exit 1
 fi
 
 WANDB_ENTITY="$1"
 WANDB_PROJECT="$2"
 ENERGY_THRESHOLD="$3"
+ACCELERATOR_FLAG=()
+
+if [ "$#" -ge 4 ]; then
+    ACCELERATOR="$4"
+elif [ -n "${ACCELERATOR:-}" ]; then
+    ACCELERATOR="${ACCELERATOR}"
+else
+    ACCELERATOR="gpu"
+fi
+
+if [ "$ACCELERATOR" = "cpu" ]; then
+    ACCELERATOR_FLAG=(--accelerator cpu)
+fi
 
 mkdir -p experiments
 mkdir -p experiments/seeds
@@ -83,5 +96,6 @@ do
     --lr 0.0001 \
     --fits_then_cps \
     --filter_h_order 2 \
-    --filter_energy_threshold $ENERGY_THRESHOLD
+    --filter_energy_threshold $ENERGY_THRESHOLD \
+    "${ACCELERATOR_FLAG[@]}"
 done

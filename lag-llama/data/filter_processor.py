@@ -162,7 +162,7 @@ class FilterProcessor:
         elif self.method == "fits_then_cps":
             filtered, info = self._fits_then_cps_filter(target_np, effective_base_period)
             if self.verbose:
-                print(f"[{self.method}][{context}] cut_freq={info['cut_freq']}, energy_threshold={info['energy_threshold']:.4f}")
+                print(f"[{self.method}][{context}] cut_freq={info['cut_freq']}, final_energy={info['final_energy_ratio']:.4f}")
             return filtered
             
         else:
@@ -244,6 +244,10 @@ class FilterProcessor:
         
         if total_energy <= 0:
             energy_ratio = 1.0
+            if self.verbose:
+                print(f"[fits_then_cps] Total energy is non-positive, skipping filtering.")
+            info = {"cut_freq": int(cut_freq), "fits_produced_threshold": energy_ratio, "final_energy_ratio": energy_ratio}
+            return x, info
         else:
             # Apply FITS filter
             X_fits = X.clone()
@@ -252,7 +256,7 @@ class FilterProcessor:
             energy_ratio = float(max(0.0, min(1.0, fits_energy / total_energy)))
             filtered_simple = torch.fft.irfft(X_fits, dim=dim).numpy()
         
-        info = {"cut_freq": int(cut_freq), "fits_produced_threshold": energy_ratio, "energy_threshold": self.energy_threshold}
+        info = {"cut_freq": int(cut_freq), "fits_produced_threshold": energy_ratio}
         if max(energy_ratio, self.energy_threshold) == self.energy_threshold: 
             info["final_energy_ratio"] = self.energy_threshold
             filtered = self._cps_filter(x, dim=dim)
@@ -295,5 +299,5 @@ def create_filter_processor_from_args(args) -> FilterProcessor:
         base_period=getattr(args, 'filter_base_period', None),
         h_order=getattr(args, 'filter_h_order', 2),
         energy_threshold=getattr(args, 'filter_energy_threshold', 0.9),
-        verbose=False,
+        verbose=getattr(args, 'verbose_processor_info', False),
     )

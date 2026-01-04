@@ -1113,6 +1113,9 @@ if __name__ == "__main__":
         help="Energy threshold for cumulative power filter (default: 0.9)"
     )
 
+    parser.add_argument("--verbose_processor_info", action="store_true", default=False,
+                        help="Whether to print detailed info from filter processor")
+
     args = parser.parse_args()
 
     if args.args_from_dict_path:

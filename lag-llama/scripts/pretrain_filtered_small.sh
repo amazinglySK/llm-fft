@@ -101,5 +101,6 @@ do
     --early_stopping_patience 30 \
     --num_validation_windows 10 \
     --evaluate_train_split \
+    --verbose_processor_info \
     "${ACCELERATOR_FLAG[@]}"
 done

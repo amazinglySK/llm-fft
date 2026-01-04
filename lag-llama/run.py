@@ -562,7 +562,124 @@ def train(args):
     metrics_dir = os.path.join(fulldir_experiments, "metrics")
     os.makedirs(metrics_dir, exist_ok=True)
 
-    # Evaluate
+    # Evaluate on validation and train splits for all datasets
+    if not args.single_dataset:
+        print("\n" + "="*80)
+        print("EVALUATING ON VALIDATION SPLITS")
+        print("="*80)
+        
+        for data_id, name in enumerate(train_dataset_names):
+            print(f"\nEvaluating validation split for: {name}")
+            data_id = name_to_data_id_map[name]
+            
+            # Create validation dataset for this specific dataset
+            (
+                train_dataset,
+                val_dataset,
+                _,
+                _,
+                _,
+                _,
+                _,
+                dataset_freq,
+            ) = create_train_and_val_datasets_with_dates(
+                name,
+                args.dataset_path,
+                data_id,
+                history_length,
+                prediction_length,
+                num_val_windows=args.num_validation_windows,
+                last_k_percentage=args.single_dataset_last_k_percentage,
+            )
+            
+            print(f"# of Series in validation data: {len(val_dataset)}")
+            
+            # Update frequency mapping
+            data_id_to_freq_map[data_id] = dataset_freq
+            estimator.data_id_to_freq_map = data_id_to_freq_map
+            
+            # Make predictions on validation data
+            try:
+                predictor = estimator.create_predictor(
+                    estimator.create_transformation(),
+                    estimator.create_lightning_module(),
+                )
+                forecast_it, ts_it = make_evaluation_predictions(
+                    dataset=val_dataset, predictor=predictor, num_samples=args.num_samples
+                )
+                forecasts = list(forecast_it)
+                tss = list(ts_it)
+                
+                # Compute metrics
+                evaluator = Evaluator(
+                    num_workers=args.num_workers, aggregation_strategy=aggregate_valid
+                )
+                agg_metrics, _ = evaluator(
+                    iter(tss), iter(forecasts), num_series=len(val_dataset)
+                )
+                
+                # Save validation metrics
+                val_metrics_dir = os.path.join(metrics_dir, "validation")
+                os.makedirs(val_metrics_dir, exist_ok=True)
+                metrics_savepath = val_metrics_dir + "/" + name + ".json"
+                with open(metrics_savepath, "w") as metrics_savefile:
+                    json.dump(agg_metrics, metrics_savefile)
+                
+                # Log metrics to wandb
+                wandb_metrics = {}
+                wandb_metrics["validation/" + name + "/" + "CRPS"] = agg_metrics["mean_wQuantileLoss"]
+                wandb_metrics["validation/" + name + "/" + "MSE"] = agg_metrics.get("MSE", None)
+                wandb_metrics["validation/" + name + "/" + "abs_error"] = agg_metrics.get("abs_error", None)
+                logger.log_metrics(wandb_metrics)
+                
+                print(f"✓ {name} validation CRPS: {agg_metrics['mean_wQuantileLoss']:.4f}")
+                
+            except Exception as e:
+                print(f"✗ Error evaluating {name} validation: {e}")
+                continue
+            
+            # Optionally evaluate on training split (to check overfitting)
+            if args.evaluate_train_split:
+                print(f"\nEvaluating training split for: {name}")
+                print(f"# of Series in training data: {len(train_dataset)}")
+                
+                try:
+                    forecast_it, ts_it = make_evaluation_predictions(
+                        dataset=train_dataset, predictor=predictor, num_samples=args.num_samples
+                    )
+                    forecasts = list(forecast_it)
+                    tss = list(ts_it)
+                    
+                    # Compute metrics
+                    agg_metrics, _ = evaluator(
+                        iter(tss), iter(forecasts), num_series=len(train_dataset)
+                    )
+                    
+                    # Save train metrics
+                    train_metrics_dir = os.path.join(metrics_dir, "train")
+                    os.makedirs(train_metrics_dir, exist_ok=True)
+                    metrics_savepath = train_metrics_dir + "/" + name + ".json"
+                    with open(metrics_savepath, "w") as metrics_savefile:
+                        json.dump(agg_metrics, metrics_savefile)
+                    
+                    # Log metrics to wandb
+                    wandb_metrics = {}
+                    wandb_metrics["train_eval/" + name + "/" + "CRPS"] = agg_metrics["mean_wQuantileLoss"]
+                    wandb_metrics["train_eval/" + name + "/" + "MSE"] = agg_metrics.get("MSE", None)
+                    wandb_metrics["train_eval/" + name + "/" + "abs_error"] = agg_metrics.get("abs_error", None)
+                    logger.log_metrics(wandb_metrics)
+                    
+                    print(f"✓ {name} training CRPS: {agg_metrics['mean_wQuantileLoss']:.4f}")
+                    
+                except Exception as e:
+                    print(f"✗ Error evaluating {name} training: {e}")
+                    continue
+
+    # Evaluate on test datasets
+    print("\n" + "="*80)
+    print("EVALUATING ON TEST SPLITS")
+    print("="*80)
+    
     evaluation_datasets = (
         args.test_datasets + train_dataset_names
         if not args.single_dataset
@@ -570,7 +687,7 @@ def train(args):
     )
 
     for name in evaluation_datasets:  # [test_dataset]:
-        print("Evaluating on", name)
+        print(f"\nEvaluating test split for: {name}")
         test_data, prediction_length, total_points, dataset_freq = create_test_dataset(
             name, args.dataset_path, window_size
         )
@@ -629,15 +746,21 @@ def train(args):
         agg_metrics, _ = evaluator(
             iter(tss), iter(forecasts), num_series=len(test_data)
         )
-        # Save metrics
-        metrics_savepath = metrics_dir + "/" + name + ".json"
+        # Save test metrics
+        test_metrics_dir = os.path.join(metrics_dir, "test")
+        os.makedirs(test_metrics_dir, exist_ok=True)
+        metrics_savepath = test_metrics_dir + "/" + name + ".json"
         with open(metrics_savepath, "w") as metrics_savefile:
             json.dump(agg_metrics, metrics_savefile)
 
-        # Log metrics. For now only CRPS is logged.
+        # Log test metrics
         wandb_metrics = {}
         wandb_metrics["test/" + name + "/" + "CRPS"] = agg_metrics["mean_wQuantileLoss"]
+        wandb_metrics["test/" + name + "/" + "MSE"] = agg_metrics.get("MSE", None)
+        wandb_metrics["test/" + name + "/" + "abs_error"] = agg_metrics.get("abs_error", None)
         logger.log_metrics(wandb_metrics)
+        
+        print(f"✓ {name} test CRPS: {agg_metrics['mean_wQuantileLoss']:.4f}")
 
     wandb.finish()
 
@@ -906,6 +1029,10 @@ if __name__ == "__main__":
 
     # Plot forecasts
     parser.add_argument("--plot_test_forecasts", action="store_true", default=True)
+
+    # Evaluate splits
+    parser.add_argument("--evaluate_train_split", action="store_true", default=False,
+                       help="Evaluate on training split (useful for checking overfitting)")
 
     # Search search_batch_size
     parser.add_argument("--search_batch_size", action="store_true", default=False)

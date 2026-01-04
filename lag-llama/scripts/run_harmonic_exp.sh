@@ -9,23 +9,24 @@ set -euo pipefail
 #
 # This script runs pretraining experiments sequentially with different harmonic filter orders
 
-if [ "$#" -lt 2 ]; then
-  echo "❌ Error: You must provide Weights & Biases entity and project name."
-  echo "Usage: $0 <wandb_entity> <wandb_project>"
+if [ "$#" -lt 3 ]; then
+  echo "❌ Error: You must provide Weights & Biases entity, project name, and energy threshold."
+  echo "Usage: $0 <wandb_entity> <wandb_project> <energy_threshold>"
   exit 1
 fi
 
 WANDB_ENTITY="$1"
 WANDB_PROJECT="$2"
-
+ENERGY_THRESHOLD="$3"  
 # Array of harmonic filter orders to test
-HARMONICS=(2 4 6 8 10)
+HARMONICS=(2 4 6 8)
 
 echo "=================================================="
 echo "Running sequential pretraining experiments"
 echo "Entity: $WANDB_ENTITY"
 echo "Project: $WANDB_PROJECT"
 echo "Harmonics: ${HARMONICS[@]}"
+echo "Energy Threshold: $ENERGY_THRESHOLD"
 echo "=================================================="
 
 # Run experiments sequentially
@@ -36,7 +37,7 @@ do
     echo "Starting experiment with harmonic filter order: $HARMONIC"
     echo "=================================================="
     
-    ./scripts/pretrain_filtered_small.sh "$WANDB_ENTITY" "$WANDB_PROJECT" $HARMONIC
+    ./scripts/pretrain_filtered_small.sh "$WANDB_ENTITY" "$WANDB_PROJECT" $HARMONIC $ENERGY_THRESHOLD
     
     echo ""
     echo "=================================================="

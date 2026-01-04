@@ -248,24 +248,19 @@ class FilterProcessor:
             # Apply FITS filter
             X_fits = X.clone()
             X_fits[cut_freq:] = 0
-            x_fits = torch.fft.irfft(X_fits, dim=dim)
-            
-            # Compute energy ratio
-            X_fits_re = torch.fft.rfft(x_fits, dim=dim)
-            fits_energy = torch.sum(torch.abs(X_fits_re) ** 2).item()
+            fits_energy = torch.sum(torch.abs(X_fits) ** 2).item()
             energy_ratio = float(max(0.0, min(1.0, fits_energy / total_energy)))
+            filtered_simple = torch.fft.irfft(X_fits, dim=dim).numpy()
         
-        # Apply CPS with computed threshold
-        # Create temporary CPS processor with the computed threshold
-        temp_processor = FilterProcessor(
-            method="cps", 
-            energy_threshold=energy_ratio,
-            verbose=False
-        )
-        filtered = temp_processor._cps_filter(x, dim=dim)
-        
-        info = {"cut_freq": int(cut_freq), "energy_threshold": energy_ratio}
-        return filtered, info
+        info = {"cut_freq": int(cut_freq), "fits_produced_threshold": energy_ratio, "energy_threshold": self.energy_threshold}
+        if max(energy_ratio, self.energy_threshold) == self.energy_threshold: 
+            info["final_energy_ratio"] = self.energy_threshold
+            filtered = self._cps_filter(x, dim=dim)
+            return filtered, info
+        else:
+            info["final_energy_ratio"] = energy_ratio
+            return filtered_simple, info
+            
 
 
 def create_filter_processor_from_args(args) -> FilterProcessor:

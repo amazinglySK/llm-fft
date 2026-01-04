@@ -140,12 +140,16 @@ class FilterProcessor:
         if self.base_period is None and freq is not None and self.method in ["fits", "fits_then_cps"]:
             inferred_period = self.infer_base_period_from_frequency(freq)
             if self.verbose:
-                print(f"Auto-inferred base_period={inferred_period} from frequency '{freq}' for {context}")
+                print(f"[FilterProcessor] Auto-inferred base_period={inferred_period} from frequency '{freq}' for {context}")
             # Use inferred period for this call only (don't modify self.base_period)
             effective_base_period = inferred_period
         else:
             effective_base_period = self.base_period or 24  # Default fallback
+            if self.verbose and freq is None and self.method in ["fits", "fits_then_cps"]:
+                print(f"[FilterProcessor] WARNING: freq=None for {context}, defaulting to base_period=24")
         
+        if self.verbose:
+            print(f"Applying '{self.method}' filter on {context} data with shape {target_np.shape}")
         # Apply the specified filtering method
         if self.method == "lpf":
             return self._low_pass_filter(target_np)
@@ -162,9 +166,9 @@ class FilterProcessor:
         elif self.method == "fits_then_cps":
             filtered, info = self._fits_then_cps_filter(target_np, effective_base_period)
             if self.verbose:
-                print(f"[{self.method}][{context}] cut_freq={info['cut_freq']}, final_energy={info['final_energy_ratio']:.4f}")
-            return filtered
-            
+                # Make the output shorter and concise
+                print(f"[{self.method}][{context}] cut_freq: {info['cut_freq']}, energy_preserved: {info['final_energy_ratio']:.3f}")
+            return filtered    
         else:
             # Fallback (should not reach here due to validation in __init__)
             return target_np

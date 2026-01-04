@@ -424,6 +424,13 @@ def train(args):
 
             # Ensure estimator sees updated frequency map after dataset creation
             estimator.data_id_to_freq_map = data_id_to_freq_map
+            
+            # Debug: Print frequency mapping
+            print("\n=== Frequency Mapping ===")
+            for did, dname in data_id_to_name_map.items():
+                dfreq = data_id_to_freq_map.get(did, "NOT_SET")
+                print(f"  data_id={did}, name={dname}, freq={dfreq}")
+            print("========================\n")
 
             # Add test splits of test data to validation dataset, just for tracking purposes
             test_datasets_num_series = []

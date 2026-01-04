@@ -434,6 +434,11 @@ class LagLlamaLightningModule(LightningModule):
                     data_id = batch["data_id"][i].item() if torch.is_tensor(batch["data_id"][i]) else batch["data_id"][i]
                     # Look up frequency from the mapping dictionary
                     freq = self.data_id_to_freq_map.get(int(data_id), None)
+                    if self.filter_processor.verbose and i == 0:  # Log once per batch
+                        if freq is not None:
+                            print(f"[Train] Found freq='{freq}' for data_id={data_id}")
+                        else:
+                            print(f"[Train] WARNING: data_id={data_id} not in freq_map.")
                 
                 # Process with proper frequency context
                 filtered_target = self.filter_processor.process(target_np, freq=freq, context="train")
@@ -518,6 +523,11 @@ class LagLlamaLightningModule(LightningModule):
                     data_id = batch["data_id"][i].item() if torch.is_tensor(batch["data_id"][i]) else batch["data_id"][i]
                     # Look up frequency from the mapping dictionary
                     freq = self.data_id_to_freq_map.get(int(data_id), None)
+                    if self.filter_processor.verbose and i == 0:  # Log once per batch
+                        if freq is not None:
+                            print(f"[Val] Found freq='{freq}' for data_id={data_id}")
+                        else:
+                            print(f"[Val] WARNING: data_id={data_id} not in freq_map.")
                 
                 # Process with proper frequency context
                 filtered_target = self.filter_processor.process(target_np, freq=freq, context="val")

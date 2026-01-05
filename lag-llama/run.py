@@ -1112,7 +1112,7 @@ if __name__ == "__main__":
         help="Base period for FITS filter. If None, will be auto-inferred from frequency"
     )
     parser.add_argument(
-        "--filter_h_order", type=int, default=2,
+        "--filter_h_order", type=float, default=2,
         help="Harmonic order for FITS filter (default: 2)"
     )
     parser.add_argument(

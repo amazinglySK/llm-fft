@@ -19,7 +19,7 @@ WANDB_ENTITY="$1"
 WANDB_PROJECT="$2"
 ENERGY_THRESHOLD="$3"  
 # Array of harmonic filter orders to test
-HARMONICS=(2 4 6 8)
+HARMONICS=(0.5 1.0 1.5 2.0)
 
 echo "=================================================="
 echo "Running sequential pretraining experiments"

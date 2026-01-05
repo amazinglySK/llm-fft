@@ -58,6 +58,7 @@ PREDICTION_INPUT_NAMES = [
 TRAINING_INPUT_NAMES = PREDICTION_INPUT_NAMES + [
     "future_target",
     "future_observed_values",
+    "data_id",
 ]
 
 

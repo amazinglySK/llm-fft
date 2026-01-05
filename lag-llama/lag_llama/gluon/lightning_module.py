@@ -441,7 +441,7 @@ class LagLlamaLightningModule(LightningModule):
                             print(f"[Train] WARNING: data_id={data_id} not in freq_map.")
                 
                 # Process with proper frequency context
-                filtered_target = self.filter_processor.process(target_np, freq=freq, context="train")
+                filtered_target = self.filter_processor.process(target_np, data_id=int(data_id), freq=freq, context="train")
                 filtered_past_target[i] = torch.from_numpy(filtered_target).to(batch["past_target"].device)
             
             batch["past_target"] = filtered_past_target

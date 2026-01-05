@@ -24,7 +24,7 @@ class FilterProcessor:
         butter_fs: float = 1.0,
         butter_order: int = 4,
         base_period: Optional[int] = None,
-        h_order: int = 2,
+        h_order: float = 2.0,
         energy_threshold: float = 0.9,
         verbose: bool = True,
     ):
@@ -117,6 +117,7 @@ class FilterProcessor:
         self, 
         target: Union[list, np.ndarray], 
         freq: Optional[str] = None,
+        data_id: Optional[int] = None,
         context: str = "unknown"
     ) -> Union[np.ndarray, Tuple[np.ndarray, Dict[str, Any]]]:
         """
@@ -137,6 +138,7 @@ class FilterProcessor:
         target_np = np.asarray(target)
         
         # Auto-infer base_period if needed and not provided
+        print(f"[FilterProcessor] got freq={freq} for {data_id}")
         if self.base_period is None and freq is not None and self.method in ["fits", "fits_then_cps"]:
             inferred_period = self.infer_base_period_from_frequency(freq)
             if self.verbose:
@@ -148,8 +150,6 @@ class FilterProcessor:
             if self.verbose and freq is None and self.method in ["fits", "fits_then_cps"]:
                 print(f"[FilterProcessor] WARNING: freq=None for {context}, defaulting to base_period=24")
         
-        if self.verbose:
-            print(f"Applying '{self.method}' filter on {context} data with shape {target_np.shape}")
         # Apply the specified filtering method
         if self.method == "lpf":
             return self._low_pass_filter(target_np)
@@ -167,7 +167,7 @@ class FilterProcessor:
             filtered, info = self._fits_then_cps_filter(target_np, effective_base_period)
             if self.verbose:
                 # Make the output shorter and concise
-                print(f"[{self.method}][{context}] cut_freq: {info['cut_freq']}, energy_preserved: {info['final_energy_ratio']:.3f}")
+                print(f"[{self.method}][{context}] cut_freq: {info['cut_freq']}, energy_preserved: {info['final_energy_ratio']:.3f} fits_produced: {info['fits_produced_threshold']:.3f}")
             return filtered    
         else:
             # Fallback (should not reach here due to validation in __init__)
@@ -193,7 +193,7 @@ class FilterProcessor:
     def _fits_filter(self, x: np.ndarray, base_period: int, dim: int = 0) -> np.ndarray:
         """Apply FITS-style filtering."""
         seq_len = len(x)
-        cut_freq = int(seq_len // base_period + 1) * self.h_order + 10
+        cut_freq = int(int(seq_len // base_period + 1) * self.h_order) + 10
         
         x_torch = torch.from_numpy(x)
         x_f = torch.fft.rfft(x_torch, dim=dim)
@@ -240,7 +240,7 @@ class FilterProcessor:
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """Apply FITS → CPS pipeline filter."""
         seq_len = len(x)
-        cut_freq = int(seq_len // base_period + 1) * self.h_order + 10
+        cut_freq = int(int(seq_len // base_period + 1) * self.h_order) + 10
         
         x_t = torch.from_numpy(x)
         X = torch.fft.rfft(x_t, dim=dim)
@@ -248,8 +248,6 @@ class FilterProcessor:
         
         if total_energy <= 0:
             energy_ratio = 1.0
-            if self.verbose:
-                print(f"[fits_then_cps] Total energy is non-positive, skipping filtering.")
             info = {"cut_freq": int(cut_freq), "fits_produced_threshold": energy_ratio, "final_energy_ratio": energy_ratio}
             return x, info
         else:

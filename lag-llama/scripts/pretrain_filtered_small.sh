@@ -46,7 +46,7 @@ mkdir -p experiments/seeds
 mkdir -p experiments/results
 
 # Convert harmonic to string suitable for filename (replace . with _)
-HARMONIC_STR="$HARMONIC"
+HARMONIC_STR=$(echo "$HARMONIC" | tr '.' '_')
 THRESHOLD_STR=$(echo "$ENERGY_THRESHOLD" | tr '.' '_')
 EXP_NAME="pretraining_lag_llama_filtered_harmonic_${HARMONIC_STR}_threshold_${THRESHOLD_STR}"
 FILENAME="experiments/seeds/${EXP_NAME}"

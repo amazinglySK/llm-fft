@@ -121,3 +121,4 @@ stats/
 notebooks/
 *.json
 *.txt
+analysis/

@@ -54,7 +54,7 @@ CONFIGPATH="configs/lag_llama.json"
 
 echo $EXP_NAME
 
-NUM_SEEDS=1
+NUM_SEEDS=5
 
 # Create seeds
 if [ -f $FILENAME ]; then

@@ -120,5 +120,6 @@ hyperparameters/
 stats/
 notebooks/
 *.json
+!lag-llama/configs/*.json
 *.txt
 analysis/

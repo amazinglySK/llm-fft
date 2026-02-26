@@ -126,10 +126,16 @@ def main():
     
     args = parser.parse_args()
     
-    # Resolve paths relative to script location
-    script_dir = Path(__file__).parent
-    base_config_path = (script_dir / args.base_config).resolve()
-    output_dir = (script_dir / args.output_dir).resolve()
+    # Convert to Path objects
+    base_config_path = Path(args.base_config)
+    output_dir = Path(args.output_dir)
+    
+    # If paths are relative, they'll be relative to CWD
+    # If they're absolute, Path handles them correctly
+    if not base_config_path.is_absolute():
+        base_config_path = Path.cwd() / base_config_path
+    if not output_dir.is_absolute():
+        output_dir = Path.cwd() / output_dir
     
     # Generate configs
     generate_grid_configs(

@@ -14,6 +14,7 @@
 
 from typing import Any, Dict, Iterable, Optional
 import warnings
+import random
 
 import lightning as L
 import torch
@@ -50,6 +51,7 @@ from gluonts.transform import (
 
 from lag_llama.gluon.lightning_module import LagLlamaLightningModule
 from data.filter_processor import FilterProcessor
+from data.precompute_train_windows import precompute_filtered_train_instances
 
 PREDICTION_INPUT_NAMES = [
     "past_target",
@@ -161,6 +163,10 @@ class LagLlamaEstimator(PyTorchLightningEstimator):
         use_single_pass_sampling: bool = False,
         filter_processor: FilterProcessor = None,
         data_id_to_freq_map: dict = {},
+        precompute_train_filtered_windows: bool = False,
+        precompute_max_windows_per_dataset: int = 2048,
+        precompute_memory_cap_mb: float = 1024.0,
+        precompute_seed: int = 42,
         device: torch.device = torch.device("cuda")
         if torch.cuda.is_available()
         else torch.device("cpu"),
@@ -264,7 +270,21 @@ class LagLlamaEstimator(PyTorchLightningEstimator):
         self.cosine_annealing_lr_args = cosine_annealing_lr_args
         self.filter_processor = filter_processor
         self.data_id_to_freq_map = data_id_to_freq_map
+        self.precompute_train_filtered_windows = precompute_train_filtered_windows
+        self.precompute_max_windows_per_dataset = precompute_max_windows_per_dataset
+        self.precompute_memory_cap_mb = precompute_memory_cap_mb
+        self.precompute_seed = precompute_seed
+        self._precomputed_train_instances = None
+        self._precompute_signature = None
+        self._precompute_stats: Dict[str, Any] = {}
         self.device = device
+
+    def _iter_precomputed_train_instances(self) -> Iterable[Dict[str, Any]]:
+        rng = random.Random(self.precompute_seed)
+        instances = self._precomputed_train_instances
+        while True:
+            idx = rng.randrange(len(instances))
+            yield instances[idx]
 
     @classmethod
     def derive_auto_fields(cls, train_iter):
@@ -433,6 +453,71 @@ class LagLlamaEstimator(PyTorchLightningEstimator):
         shuffle_buffer_length: Optional[int] = None,
         **kwargs,
     ) -> Iterable:
+        if self.precompute_train_filtered_windows:
+            if self._precomputed_train_instances is not None:
+                instances = self._iter_precomputed_train_instances()
+                field_names = TRAINING_INPUT_NAMES + ["is_prefiltered"]
+                if self.time_feat:
+                    field_names += ["past_time_feat", "future_time_feat"]
+
+                return as_stacked_batches(
+                    instances,
+                    batch_size=self.batch_size,
+                    shuffle_buffer_length=shuffle_buffer_length,
+                    field_names=field_names,
+                    output_type=torch.tensor,
+                    num_batches_per_epoch=self.num_batches_per_epoch,
+                )
+
+            result = precompute_filtered_train_instances(
+                data=data,
+                estimator=self,
+                module=module,
+                filter_processor=self.filter_processor,
+                data_id_to_freq_map=self.data_id_to_freq_map,
+                max_windows_per_dataset=self.precompute_max_windows_per_dataset,
+                memory_cap_mb=self.precompute_memory_cap_mb,
+                seed=self.precompute_seed,
+            )
+
+            if result["enabled"]:
+                if (
+                    self._precomputed_train_instances is None
+                    or self._precompute_signature != result["signature"]
+                ):
+                    self._precomputed_train_instances = result["instances"]
+                    self._precompute_signature = result["signature"]
+                    self._precompute_stats = {
+                        "reason": result["reason"],
+                        "num_instances": len(result["instances"]),
+                        "per_data_id_counts": result["per_data_id_counts"],
+                        "total_mb": result["total_bytes"] / (1024 * 1024),
+                    }
+                    print(
+                        "[Precompute] Cached"
+                        f" {self._precompute_stats['num_instances']} filtered train windows"
+                        f" ({self._precompute_stats['total_mb']:.2f} MB)."
+                    )
+
+                instances = self._iter_precomputed_train_instances()
+                field_names = TRAINING_INPUT_NAMES + ["is_prefiltered"]
+                if self.time_feat:
+                    field_names += ["past_time_feat", "future_time_feat"]
+
+                return as_stacked_batches(
+                    instances,
+                    batch_size=self.batch_size,
+                    shuffle_buffer_length=shuffle_buffer_length,
+                    field_names=field_names,
+                    output_type=torch.tensor,
+                    num_batches_per_epoch=self.num_batches_per_epoch,
+                )
+            else:
+                print(
+                    "[Precompute] Disabled, falling back to online windows:"
+                    f" {result['reason']}"
+                )
+
         data = Cyclic(data).stream()
         instances = self._create_instance_splitter(module, "training").apply(
             data, is_train=True

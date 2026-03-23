@@ -138,7 +138,6 @@ class FilterProcessor:
         target_np = np.asarray(target)
         
         # Auto-infer base_period if needed and not provided
-        print(f"[FilterProcessor] got freq={freq} for {data_id}")
         if self.base_period is None and freq is not None and self.method in ["fits", "fits_then_cps"]:
             inferred_period = self.infer_base_period_from_frequency(freq)
             if self.verbose:

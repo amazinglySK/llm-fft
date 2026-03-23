@@ -420,8 +420,16 @@ class LagLlamaLightningModule(LightningModule):
         """
         Execute training step.
         """
+        is_prefiltered = False
+        if "is_prefiltered" in batch:
+            marker = batch["is_prefiltered"]
+            if torch.is_tensor(marker):
+                is_prefiltered = bool(torch.all(marker > 0).item())
+            else:
+                is_prefiltered = bool(marker)
+
         # Apply filtering to past_target (model input predictor window) with proper frequency context
-        if self.filter_processor.method != "none":
+        if self.filter_processor.method != "none" and not is_prefiltered:
             batch_size, seq_len = batch["past_target"].shape
             filtered_past_target = torch.zeros_like(batch["past_target"])
             
@@ -430,6 +438,7 @@ class LagLlamaLightningModule(LightningModule):
                 
                 # Get frequency for this sample from data_id
                 freq = None
+                data_id = None
                 if "data_id" in batch and batch["data_id"] is not None:
                     data_id = batch["data_id"][i].item() if torch.is_tensor(batch["data_id"][i]) else batch["data_id"][i]
                     # Look up frequency from the mapping dictionary
@@ -441,7 +450,7 @@ class LagLlamaLightningModule(LightningModule):
                             print(f"[Train] WARNING: data_id={data_id} not in freq_map.")
                 
                 # Process with proper frequency context
-                filtered_target = self.filter_processor.process(target_np, data_id=int(data_id), freq=freq, context="train")
+                filtered_target = self.filter_processor.process(target_np, data_id=None if data_id is None else int(data_id), freq=freq, context="train")
                 filtered_past_target[i] = torch.from_numpy(filtered_target).to(batch["past_target"].device)
             
             batch["past_target"] = filtered_past_target

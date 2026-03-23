@@ -317,9 +317,26 @@ def train(args):
         track_loss_per_series=args.single_dataset != None,
         ckpt_path=ckpt_path,
         filter_processor=filter_processor,
+        precompute_train_filtered_windows=args.precompute_train_filtered_windows,
+        precompute_max_windows_per_dataset=args.precompute_max_windows_per_dataset,
+        precompute_memory_cap_mb=args.precompute_memory_cap_mb,
+        precompute_seed=args.precompute_seed,
         trainer_kwargs=trainer_kwargs,
         device=estimator_device,
     )
+
+    if args.precompute_train_filtered_windows:
+        print("[Precompute] Enabled for training windows")
+        print(
+            "[Precompute] max_windows_per_dataset=",
+            args.precompute_max_windows_per_dataset,
+            "memory_cap_mb=",
+            args.precompute_memory_cap_mb,
+            "seed=",
+            args.precompute_seed,
+        )
+    else:
+        print("[Precompute] Disabled")
 
     # Save the args as config to the directory
     config_filepath = fulldir_experiments + "/args.json"
@@ -1122,6 +1139,31 @@ if __name__ == "__main__":
 
     parser.add_argument("--verbose_processor_info", action="store_true", default=False,
                         help="Whether to print detailed info from filter processor")
+
+    parser.add_argument(
+        "--precompute_train_filtered_windows",
+        action="store_true",
+        default=False,
+        help="Precompute filtered training windows once per run and reuse them during training",
+    )
+    parser.add_argument(
+        "--precompute_max_windows_per_dataset",
+        type=int,
+        default=2048,
+        help="Maximum number of precomputed training windows per dataset",
+    )
+    parser.add_argument(
+        "--precompute_memory_cap_mb",
+        type=float,
+        default=1024.0,
+        help="In-memory cap (MB) for precomputed training windows",
+    )
+    parser.add_argument(
+        "--precompute_seed",
+        type=int,
+        default=42,
+        help="Seed for precomputed-window sampling and reuse",
+    )
 
     args = parser.parse_args()
 

@@ -123,3 +123,6 @@ notebooks/
 !lag-llama/configs/*.json
 *.txt
 analysis/
+.github/
+.vscode/
+.DS_Store

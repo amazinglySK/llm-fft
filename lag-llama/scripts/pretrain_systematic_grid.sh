@@ -22,6 +22,11 @@ HARMONIC=1.0
 ENERGY_THRESHOLD=0.9
 ACCELERATOR_FLAG=()
 
+# Precompute filtered training windows once per run to avoid per-epoch filtering overhead.
+# Override these via env vars when needed, e.g. PRECOMPUTE_MAX_WINDOWS_PER_DATASET=1024 ./script.sh ...
+PRECOMPUTE_MAX_WINDOWS_PER_DATASET="${PRECOMPUTE_MAX_WINDOWS_PER_DATASET:-2048}"
+PRECOMPUTE_MEMORY_CAP_MB="${PRECOMPUTE_MEMORY_CAP_MB:-1024}"
+
 if [ "$#" -ge 3 ]; then
     ACCELERATOR="$3"
 elif [ -n "${ACCELERATOR:-}" ]; then
@@ -65,6 +70,9 @@ echo "Seeds per configuration: ${NUM_SEEDS}"
 echo "Total configurations: $((($MAX_N_LAYER - $MIN_N_LAYER + 1) * ($MAX_N_HEAD - $MIN_N_HEAD + 1)))"
 echo "Total runs: $((($MAX_N_LAYER - $MIN_N_LAYER + 1) * ($MAX_N_HEAD - $MIN_N_HEAD + 1) * $NUM_SEEDS))"
 echo "======================================"
+echo "Precompute train windows: enabled"
+echo "  max windows per dataset: ${PRECOMPUTE_MAX_WINDOWS_PER_DATASET}"
+echo "  memory cap (MB): ${PRECOMPUTE_MEMORY_CAP_MB}"
 echo ""
 
 # Counter for tracking progress
@@ -137,6 +145,10 @@ do
             --num_validation_windows 10 \
             --evaluate_train_split \
             --verbose_processor_info \
+            --precompute_train_filtered_windows \
+            --precompute_max_windows_per_dataset "$PRECOMPUTE_MAX_WINDOWS_PER_DATASET" \
+            --precompute_memory_cap_mb "$PRECOMPUTE_MEMORY_CAP_MB" \
+            --precompute_seed "$SEED" \
             "${ACCELERATOR_FLAG[@]}"
 
             echo "Completed ${EXPERIMENT_NAME}"

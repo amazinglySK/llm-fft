@@ -128,7 +128,7 @@ def precompute_filtered_train_instances(
     rng = random.Random(seed)
     stream = cyclic_class(data).stream()
     splitter = estimator._create_instance_splitter(module, "training")
-    instances_iter = splitter.apply(stream, is_train=True)
+    instances_iter = iter(splitter.apply(stream, is_train=True))
 
     memory_cap_bytes = int(memory_cap_mb * 1024 * 1024)
     total_bytes = 0

@@ -326,17 +326,15 @@ def train(args):
     )
 
     if args.precompute_train_filtered_windows:
-        print("[Precompute] Enabled for training windows")
         print(
-            "[Precompute] max_windows_per_dataset=",
-            args.precompute_max_windows_per_dataset,
-            "memory_cap_mb=",
-            args.precompute_memory_cap_mb,
-            "seed=",
-            args.precompute_seed,
+            f"[Precompute] Enabled — max_windows_per_dataset={args.precompute_max_windows_per_dataset},"
+            f" memory_cap_mb={args.precompute_memory_cap_mb}, seed={args.precompute_seed}"
         )
+        print("[Precompute] Will precompute train AND validation windows on first dataloader build.")
+        print("[Precompute] Watch for 'filter/online_train_batches' and 'filter/online_val_batches'")
+        print("[Precompute] metrics in W&B — both should be 0 every epoch if precompute is active.")
     else:
-        print("[Precompute] Disabled")
+        print("[Precompute] Disabled — filtering will run online per batch during training/validation.")
 
     # Save the args as config to the directory
     config_filepath = fulldir_experiments + "/args.json"
@@ -1123,6 +1121,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--filter_butter_order", type=int, default=4,
         help="Butterworth filter order (higher = sharper cutoff) (default: 4)"
+    )
+    parser.add_argument(
+        "--filter_butter_cutoff", type=float, default=0.1,
+        help="Cutoff frequency for Butterworth filter (default: 0.1)"
+    )
+    parser.add_argument(
+        "--filter_butter_fs", type=float, default=1.0,
+        help="Sampling frequency for Butterworth filter (default: 1.0)"
     )
     parser.add_argument(
         "--filter_base_period", type=int, default=None,

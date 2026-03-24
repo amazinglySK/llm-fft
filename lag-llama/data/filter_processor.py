@@ -51,11 +51,18 @@ class FilterProcessor:
         self.h_order = h_order
         self.energy_threshold = energy_threshold
         self.verbose = verbose
-        
+
         # Validate method
         valid_methods = {"none", "lpf", "butterworth", "fits", "cps", "fits_then_cps"}
         if self.method not in valid_methods:
             raise ValueError(f"Invalid method '{method}'. Must be one of {valid_methods}")
+
+        # Rate-limit verbose output so precompute (first calls) gets detail but
+        # repeated online calls do not spam the log.
+        self._call_count = 0
+        # After this many calls the per-call verbose messages are suppressed.
+        # Set to 0 to disable entirely; set to a large number for full output.
+        self._max_verbose_calls = 50
     
     def infer_base_period_from_frequency(self, freq_str: str) -> int:
         """
@@ -103,15 +110,16 @@ class FilterProcessor:
             
             # Default fallback
             else:
-                if self.verbose:
+                should_log = self.verbose and (self._call_count <= self._max_verbose_calls)
+                if should_log:
                     print(f"Unknown frequency type '{freq_type}' for '{freq_str}', using base_period=24")
                 return 24
-                
+
         except Exception as e:
-            if self.verbose:
-                print(f"Warning: Could not parse frequency '{freq_str}': {e}")
-                print("Using default base_period=24 (hourly pattern)")
-            return 24  # Default to hourly patterns
+            should_log = self.verbose and (self._call_count <= self._max_verbose_calls)
+            if should_log:
+                print(f"Warning: Could not parse frequency '{freq_str}': {e}. Using default base_period=24")
+            return 24
     
     def process(
         self, 
@@ -133,41 +141,48 @@ class FilterProcessor:
         """
         if self.method == "none":
             return np.asarray(target)
-        
+
         # Convert to numpy array
         target_np = np.asarray(target)
-        
+
+        # Rate-limited verbose: only log for the first _max_verbose_calls calls.
+        self._call_count += 1
+        should_log = self.verbose and (self._call_count <= self._max_verbose_calls)
+
         # Auto-infer base_period if needed and not provided
         if self.base_period is None and freq is not None and self.method in ["fits", "fits_then_cps"]:
             inferred_period = self.infer_base_period_from_frequency(freq)
-            if self.verbose:
-                print(f"[FilterProcessor] Auto-inferred base_period={inferred_period} from frequency '{freq}' for {context}")
-            # Use inferred period for this call only (don't modify self.base_period)
+            if should_log:
+                print(f"[FilterProcessor] Auto-inferred base_period={inferred_period} from freq='{freq}' for {context}")
             effective_base_period = inferred_period
         else:
-            effective_base_period = self.base_period or 24  # Default fallback
-            if self.verbose and freq is None and self.method in ["fits", "fits_then_cps"]:
+            effective_base_period = self.base_period or 24
+            if should_log and freq is None and self.method in ["fits", "fits_then_cps"]:
                 print(f"[FilterProcessor] WARNING: freq=None for {context}, defaulting to base_period=24")
-        
+
         # Apply the specified filtering method
         if self.method == "lpf":
             return self._low_pass_filter(target_np)
-            
+
         elif self.method == "butterworth":
             return self._butterworth_filter(target_np)
-            
+
         elif self.method == "fits":
             return self._fits_filter(target_np, effective_base_period)
-            
+
         elif self.method == "cps":
             return self._cps_filter(target_np)
-            
+
         elif self.method == "fits_then_cps":
             filtered, info = self._fits_then_cps_filter(target_np, effective_base_period)
-            if self.verbose:
-                # Make the output shorter and concise
-                print(f"[{self.method}][{context}] cut_freq: {info['cut_freq']}, energy_preserved: {info['final_energy_ratio']:.3f} fits_produced: {info['fits_produced_threshold']:.3f}")
-            return filtered    
+            if should_log:
+                print(
+                    f"[{self.method}][{context}] cut_freq={info['cut_freq']},"
+                    f" energy_preserved={info['final_energy_ratio']:.3f},"
+                    f" fits_produced={info['fits_produced_threshold']:.3f}"
+                )
+            return filtered
+
         else:
             # Fallback (should not reach here due to validation in __init__)
             return target_np
@@ -291,11 +306,18 @@ def create_filter_processor_from_args(args) -> FilterProcessor:
     elif getattr(args, 'fits_then_cps', False):
         method = "fits_then_cps"
     
+    # Prefer the correctly-namespaced args; fall back to legacy bare names for
+    # any callers that set args.butter_cutoff / args.butter_fs directly.
+    butter_cutoff = getattr(args, 'filter_butter_cutoff',
+                            getattr(args, 'butter_cutoff', 0.1))
+    butter_fs = getattr(args, 'filter_butter_fs',
+                        getattr(args, 'butter_fs', 1.0))
+
     return FilterProcessor(
         method=method,
         dropout_rate=getattr(args, 'filter_dropout_rate', 0.2),
-        butter_cutoff=getattr(args, 'butter_cutoff', 0.1),
-        butter_fs=getattr(args, 'butter_fs', 1.0),
+        butter_cutoff=butter_cutoff,
+        butter_fs=butter_fs,
         butter_order=getattr(args, 'filter_butter_order', 4),
         base_period=getattr(args, 'filter_base_period', None),
         h_order=getattr(args, 'filter_h_order', 2),

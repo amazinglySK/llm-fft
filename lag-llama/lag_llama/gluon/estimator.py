@@ -51,7 +51,10 @@ from gluonts.transform import (
 
 from lag_llama.gluon.lightning_module import LagLlamaLightningModule
 from data.filter_processor import FilterProcessor
-from data.precompute_train_windows import precompute_filtered_train_instances
+from data.precompute_train_windows import (
+    precompute_filtered_train_instances,
+    precompute_filtered_val_instances,
+)
 
 PREDICTION_INPUT_NAMES = [
     "past_target",
@@ -277,6 +280,8 @@ class LagLlamaEstimator(PyTorchLightningEstimator):
         self._precomputed_train_instances = None
         self._precompute_signature = None
         self._precompute_stats: Dict[str, Any] = {}
+        self._precomputed_val_instances = None
+        self._precomputed_val_stats: Dict[str, Any] = {}
         self.device = device
 
     def _iter_precomputed_train_instances(self) -> Iterable[Dict[str, Any]]:
@@ -549,6 +554,48 @@ class LagLlamaEstimator(PyTorchLightningEstimator):
         module: LagLlamaLightningModule,
         **kwargs,
     ) -> Iterable:
+        if self.precompute_train_filtered_windows:
+            # Precompute once on first call; cache for reuse across all epochs.
+            if self._precomputed_val_instances is None:
+                result = precompute_filtered_val_instances(
+                    data=data,
+                    estimator=self,
+                    module=module,
+                    filter_processor=self.filter_processor,
+                    data_id_to_freq_map=self.data_id_to_freq_map,
+                )
+                if result["enabled"]:
+                    self._precomputed_val_instances = result["instances"]
+                    self._precomputed_val_stats = {
+                        "reason": result["reason"],
+                        "num_instances": len(result["instances"]),
+                        "total_mb": result["total_bytes"] / (1024 * 1024),
+                    }
+                    print(
+                        "[Precompute] Cached"
+                        f" {self._precomputed_val_stats['num_instances']} filtered val windows"
+                        f" ({self._precomputed_val_stats['total_mb']:.2f} MB)."
+                    )
+                else:
+                    print(
+                        "[Precompute] Val disabled, falling back to online filtering:"
+                        f" {result['reason']}"
+                    )
+
+            if self._precomputed_val_instances is not None:
+                field_names = TRAINING_INPUT_NAMES + ["is_prefiltered"]
+                if self.time_feat:
+                    field_names += ["past_time_feat", "future_time_feat"]
+                # Pass the list directly — it is re-iterable, so each epoch the
+                # transform chain gets a fresh iterator from the beginning.
+                return as_stacked_batches(
+                    self._precomputed_val_instances,
+                    batch_size=self.batch_size,
+                    field_names=field_names,
+                    output_type=torch.tensor,
+                )
+
+        # Online path (either precompute disabled or precompute failed above).
         instances = self._create_instance_splitter(module, "validation").apply(
             data, is_train=True
         )

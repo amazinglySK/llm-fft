@@ -144,7 +144,6 @@ do
             --early_stopping_patience 30 \
             --num_validation_windows 10 \
             --evaluate_train_split \
-            --verbose_processor_info \
             --precompute_train_filtered_windows \
             --precompute_max_windows_per_dataset "$PRECOMPUTE_MAX_WINDOWS_PER_DATASET" \
             --precompute_memory_cap_mb "$PRECOMPUTE_MEMORY_CAP_MB" \

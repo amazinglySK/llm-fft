@@ -148,9 +148,14 @@ class LagLlamaLightningModule(LightningModule):
         self.use_kv_cache = use_kv_cache
         self.use_single_pass_sampling = use_single_pass_sampling
         self.filter_processor = filter_processor or FilterProcessor(method="none")
-        
+
         # Store frequency mapping for per-sample filtering
         self.data_id_to_freq_map = data_id_to_freq_map
+
+        # Counters to track how often online filtering is still invoked.
+        # Should be 0 every epoch once precompute is working correctly.
+        self._online_filter_calls_train = 0
+        self._online_filter_calls_val = 0
         
         self.transforms = []
         aug_probs = dict(
@@ -428,31 +433,29 @@ class LagLlamaLightningModule(LightningModule):
             else:
                 is_prefiltered = bool(marker)
 
-        # Apply filtering to past_target (model input predictor window) with proper frequency context
+        # Apply filtering only when the batch was not already prefiltered upstream.
         if self.filter_processor.method != "none" and not is_prefiltered:
+            self._online_filter_calls_train += 1
             batch_size, seq_len = batch["past_target"].shape
             filtered_past_target = torch.zeros_like(batch["past_target"])
-            
+
             for i in range(batch_size):
                 target_np = batch["past_target"][i].cpu().numpy()
-                
-                # Get frequency for this sample from data_id
+
                 freq = None
                 data_id = None
                 if "data_id" in batch and batch["data_id"] is not None:
                     data_id = batch["data_id"][i].item() if torch.is_tensor(batch["data_id"][i]) else batch["data_id"][i]
-                    # Look up frequency from the mapping dictionary
                     freq = self.data_id_to_freq_map.get(int(data_id), None)
-                    if self.filter_processor.verbose and i == 0:  # Log once per batch
-                        if freq is not None:
-                            print(f"[Train] Found freq='{freq}' for data_id={data_id}")
-                        else:
-                            print(f"[Train] WARNING: data_id={data_id} not in freq_map.")
-                
-                # Process with proper frequency context
-                filtered_target = self.filter_processor.process(target_np, data_id=None if data_id is None else int(data_id), freq=freq, context="train")
+
+                filtered_target = self.filter_processor.process(
+                    target_np,
+                    data_id=None if data_id is None else int(data_id),
+                    freq=freq,
+                    context="train",
+                )
                 filtered_past_target[i] = torch.from_numpy(filtered_target).to(batch["past_target"].device)
-            
+
             batch["past_target"] = filtered_past_target
         
         if random.random() < self.aug_prob:
@@ -487,6 +490,17 @@ class LagLlamaLightningModule(LightningModule):
         return train_loss_avg.mean()
 
     def on_train_epoch_end(self):
+        # Log how many batches were still filtered online this epoch.
+        # A non-zero value means precompute is not active for training.
+        self.log(
+            "filter/online_train_batches",
+            float(self._online_filter_calls_train),
+            on_epoch=True,
+            on_step=False,
+            prog_bar=False,
+        )
+        self._online_filter_calls_train = 0
+
         # Log all losses
         for key, value in self.train_loss_dict.items():
             loss_avg = np.mean(value)
@@ -518,30 +532,33 @@ class LagLlamaLightningModule(LightningModule):
         """
         Execute validation step.
         """
-        # Apply filtering to past_target (model input predictor window) with proper frequency context
-        if self.filter_processor.method != "none":
+        is_prefiltered = False
+        if "is_prefiltered" in batch:
+            marker = batch["is_prefiltered"]
+            if torch.is_tensor(marker):
+                is_prefiltered = bool(torch.all(marker > 0).item())
+            else:
+                is_prefiltered = bool(marker)
+
+        # Apply filtering only when the batch was not already prefiltered upstream.
+        if self.filter_processor.method != "none" and not is_prefiltered:
+            self._online_filter_calls_val += 1
             batch_size, seq_len = batch["past_target"].shape
             filtered_past_target = torch.zeros_like(batch["past_target"])
-            
+
             for i in range(batch_size):
                 target_np = batch["past_target"][i].cpu().numpy()
-                
-                # Get frequency for this sample from data_id
+
                 freq = None
                 if "data_id" in batch and batch["data_id"] is not None:
                     data_id = batch["data_id"][i].item() if torch.is_tensor(batch["data_id"][i]) else batch["data_id"][i]
-                    # Look up frequency from the mapping dictionary
                     freq = self.data_id_to_freq_map.get(int(data_id), None)
-                    if self.filter_processor.verbose and i == 0:  # Log once per batch
-                        if freq is not None:
-                            print(f"[Val] Found freq='{freq}' for data_id={data_id}")
-                        else:
-                            print(f"[Val] WARNING: data_id={data_id} not in freq_map.")
-                
-                # Process with proper frequency context
-                filtered_target = self.filter_processor.process(target_np, freq=freq, context="val")
+
+                filtered_target = self.filter_processor.process(
+                    target_np, freq=freq, context="val"
+                )
                 filtered_past_target[i] = torch.from_numpy(filtered_target).to(batch["past_target"].device)
-            
+
             batch["past_target"] = filtered_past_target
         
         val_loss_avg = self._compute_loss(
@@ -558,6 +575,17 @@ class LagLlamaLightningModule(LightningModule):
         return val_loss_avg.mean()
 
     def on_validation_epoch_end(self):
+        # Log how many batches were still filtered online this epoch.
+        # A non-zero value means precompute is not active for validation.
+        self.log(
+            "filter/online_val_batches",
+            float(self._online_filter_calls_val),
+            on_epoch=True,
+            on_step=False,
+            prog_bar=False,
+        )
+        self._online_filter_calls_val = 0
+
         # Log all losses
         for key, value in self.val_loss_dict.items():
             loss_avg = np.mean(value)

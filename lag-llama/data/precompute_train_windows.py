@@ -6,6 +6,9 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
+# Methods that require a known frequency string to infer base_period.
+_METHODS_REQUIRING_FREQ = frozenset({"fits", "fits_then_cps"})
+
 
 def build_precompute_signature(
     *,
@@ -135,8 +138,6 @@ def precompute_filtered_train_instances(
     instances: List[Dict[str, Any]] = []
     per_data_id_counts: Dict[int, int] = {}
 
-    methods_requiring_freq = {"fits", "fits_then_cps"}
-
     for _ in range(total_windows_target):
         instance = next(instances_iter)
 
@@ -152,7 +153,7 @@ def precompute_filtered_train_instances(
             }
 
         freq = data_id_to_freq_map.get(int(data_id))
-        if filter_processor.method in methods_requiring_freq and freq is None:
+        if filter_processor.method in _METHODS_REQUIRING_FREQ and freq is None:
             return {
                 "enabled": False,
                 "reason": f"missing-frequency-for-data-id-{data_id}",
@@ -200,5 +201,74 @@ def precompute_filtered_train_instances(
         "signature": signature,
         "instances": instances,
         "per_data_id_counts": per_data_id_counts,
+        "total_bytes": total_bytes,
+    }
+
+
+def precompute_filtered_val_instances(
+    *,
+    data,
+    estimator,
+    module,
+    filter_processor,
+    data_id_to_freq_map: Dict[int, str],
+) -> Dict[str, Any]:
+    """Precompute filtered validation windows once and cache as a plain list.
+
+    The returned list is a plain Python list so it can be passed directly to
+    ``as_stacked_batches`` as a re-iterable dataset — every epoch the transform
+    chain calls ``iter(list)`` and gets a fresh iterator from the beginning.
+
+    Unlike training precompute, validation windows are finite and deterministic
+    (driven by ValidationSplitSampler / ExpectedNumInstanceSampler on a finite
+    dataset), so no memory cap or shuffling is applied here.
+    """
+    if filter_processor is None or filter_processor.method == "none":
+        return {
+            "enabled": False,
+            "reason": "filtering-disabled",
+            "instances": None,
+            "total_bytes": 0,
+        }
+
+    splitter = estimator._create_instance_splitter(module, "validation")
+    instances_iter = iter(splitter.apply(data, is_train=True))
+
+    instances: List[Dict[str, Any]] = []
+    total_bytes = 0
+
+    for instance in instances_iter:
+        data_id = _extract_data_id(instance)
+        freq = data_id_to_freq_map.get(int(data_id)) if data_id is not None else None
+
+        if filter_processor.method in _METHODS_REQUIRING_FREQ and freq is None:
+            return {
+                "enabled": False,
+                "reason": f"missing-frequency-for-data-id-{data_id}",
+                "instances": None,
+                "total_bytes": total_bytes,
+            }
+
+        past_target = np.asarray(instance["past_target"])
+        filtered_target = filter_processor.process(
+            past_target,
+            freq=freq,
+            data_id=int(data_id) if data_id is not None else None,
+            context="precompute_val",
+        )
+        if isinstance(filtered_target, tuple):
+            filtered_target = filtered_target[0]
+
+        filtered_instance = dict(instance)
+        filtered_instance["past_target"] = np.asarray(filtered_target, dtype=past_target.dtype)
+        filtered_instance["is_prefiltered"] = np.asarray(1, dtype=np.int64)
+
+        instances.append(filtered_instance)
+        total_bytes += _instance_num_bytes(filtered_instance)
+
+    return {
+        "enabled": True,
+        "reason": "ok",
+        "instances": instances,
         "total_bytes": total_bytes,
     }

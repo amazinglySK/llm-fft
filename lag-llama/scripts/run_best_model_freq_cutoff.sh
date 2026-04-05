@@ -133,7 +133,7 @@ for HARMONIC in "${H_ORDERS[@]}"; do
             --batch_size 512 -m 500 -n 64 \
             --wandb_entity "$WANDB_ENTITY" \
             --wandb_project "$WANDB_PROJECT" \
-            --wandb_tags "lagllama" "freq_cutoff" "extra_analysis \
+            --wandb_tags "lagllama" "freq_cutoff" "extra_analysis" \
                          "l${N_LAYER}" "h${N_HEAD}" \
                          "harmonic_${HARMONIC_STR}" \
                          "threshold_${THRESHOLD_STR}" \

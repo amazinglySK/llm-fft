@@ -218,6 +218,69 @@ experiments/
 - **Memory optimization:** Use `--search_batch_size` flag to auto-find optimal batch size
 - **Resume training:** Scripts automatically resume from checkpoints if they exist
 
+## Grid Search: Identifying the Best Architecture
+
+### Running the Systematic Grid Search
+
+```bash
+cd lag-llama
+./scripts/pretrain_systematic_grid.sh <wandb_entity> <wandb_project>
+```
+
+This sweeps `n_layer` (3–8) × `n_head` (3–9) with 5 seeds each and logs all results to W&B under the `optim-grid` project.
+
+### Analysing Results
+
+Open `analysis/optim_grid_summary.ipynb` and run all cells.  
+The last section **"Best Model in the 0.5M – 1M Parameter Range"** automatically:
+
+1. Filters models whose parameter count falls between 500 k and 1 M.
+2. Ranks them by average test CRPS (lower is better).
+3. Prints the winning `n_layer` / `n_head` pair and the exact command to re-run it.
+
+## Frequency-Cutoff Experiments for the Best Architecture
+
+Once you have identified the best model from the grid search, run frequency-cutoff experiments to explore how different levels of high-frequency filtering affect its performance.
+
+### What the scripts do
+
+| Script | Purpose |
+|--------|---------|
+| `scripts/generate_freq_cutoff_config.py` | Writes a single JSON config with the chosen `n_layer` / `n_head` |
+| `scripts/run_best_model_freq_cutoff.sh` | Runs 5 seeds × 2 `h_order` values (0.5 and 0.75) for the target architecture |
+
+The `h_order` parameter controls the frequency cutoff:  
+`cut_freq = (seq_len // base_period + 1) × h_order + 10`
+
+| `h_order` | Effect |
+|-----------|--------|
+| 2.0 | Original default – least filtering |
+| 1.0 | Grid-search baseline – moderate filtering |
+| 0.75 | More aggressive cutoff |
+| 0.5 | Most aggressive cutoff (fewest high-freq components kept) |
+
+### Usage
+
+```bash
+cd lag-llama
+
+# Example: best model found was n_layer=5, n_head=5
+./scripts/run_best_model_freq_cutoff.sh <wandb_entity> <wandb_project> 5 5
+
+# Force CPU execution (slow, for testing only)
+./scripts/run_best_model_freq_cutoff.sh <wandb_entity> <wandb_project> 5 5 cpu
+```
+
+This produces **10 runs** (2 h\_order values × 5 seeds), all logged to W&B with tags  
+`lagllama`, `freq_cutoff`, `l<n_layer>`, `h<n_head>`, `harmonic_<value>`.
+
+### Override precompute limits (optional)
+
+```bash
+PRECOMPUTE_MAX_WINDOWS_PER_DATASET=1024 PRECOMPUTE_MEMORY_CAP_MB=512 \
+  ./scripts/run_best_model_freq_cutoff.sh myusername my-project 5 5
+```
+
 ## Comparing Results
 
 ### Metrics to Track

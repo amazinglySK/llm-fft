@@ -27,6 +27,11 @@ WANDB_ENTITY="$1"
 WANDB_PROJECT="$2"
 WANDB_TAGS="lagllama"
 
+# Precompute filtered training windows once per run to avoid per-epoch filtering overhead.
+# Override these via env vars when needed, e.g. PRECOMPUTE_MAX_WINDOWS_PER_DATASET=1024 ./script.sh ...
+PRECOMPUTE_MAX_WINDOWS_PER_DATASET="${PRECOMPUTE_MAX_WINDOWS_PER_DATASET:-2048}"
+PRECOMPUTE_MEMORY_CAP_MB="${PRECOMPUTE_MEMORY_CAP_MB:-1024}"
+
 mkdir -p experiments
 mkdir -p experiments/seeds
 mkdir -p experiments/results
@@ -81,5 +86,9 @@ do
     --lr 0.0001 \
     --early_stopping_patience 30 \
     --num_validation_windows 10 \
-    --evaluate_train_split
+    --evaluate_train_split \
+    --precompute_train_filtered_windows \
+    --precompute_max_windows_per_dataset "$PRECOMPUTE_MAX_WINDOWS_PER_DATASET" \
+    --precompute_memory_cap_mb "$PRECOMPUTE_MEMORY_CAP_MB" \
+    --precompute_seed "$SEED"
 done
